@@ -54,7 +54,7 @@ defmodule LoomCli.Main do
     if model = opts[:model] do
       Loom.Config.put(:model, %{
         default: model,
-        weak: Loom.Config.get(:model, :weak)
+        editor: Loom.Config.get(:model, :editor)
       })
     end
 

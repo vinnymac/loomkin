@@ -59,91 +59,20 @@ defmodule Loom.Session.ArchitectTest do
     end
   end
 
-  describe "session mode switching" do
-    test "starts in normal mode" do
-      session_id = Ecto.UUID.generate()
-
-      {:ok, pid} =
-        Manager.start_session(
-          session_id: session_id,
-          model: "test:model",
-          project_path: @project_path
-        )
-
-      assert {:ok, :normal} = Session.get_mode(pid)
-    end
-
-    test "can switch to architect mode" do
-      session_id = Ecto.UUID.generate()
-
-      {:ok, pid} =
-        Manager.start_session(
-          session_id: session_id,
-          model: "test:model",
-          project_path: @project_path
-        )
-
-      assert :ok = Session.set_mode(pid, :architect)
-      assert {:ok, :architect} = Session.get_mode(pid)
-    end
-
-    test "can switch back to normal mode" do
-      session_id = Ecto.UUID.generate()
-
-      {:ok, pid} =
-        Manager.start_session(
-          session_id: session_id,
-          model: "test:model",
-          project_path: @project_path
-        )
-
-      assert :ok = Session.set_mode(pid, :architect)
-      assert {:ok, :architect} = Session.get_mode(pid)
-
-      assert :ok = Session.set_mode(pid, :normal)
-      assert {:ok, :normal} = Session.get_mode(pid)
-    end
-
-    test "mode switch broadcasts event" do
-      session_id = Ecto.UUID.generate()
-
-      {:ok, pid} =
-        Manager.start_session(
-          session_id: session_id,
-          model: "test:model",
-          project_path: @project_path
-        )
-
-      Session.subscribe(session_id)
-      Session.set_mode(pid, :architect)
-
-      assert_receive {:mode_changed, ^session_id, :architect}
-    end
-
-    test "get_mode returns error for unknown session" do
-      assert {:error, :not_found} = Session.get_mode(Ecto.UUID.generate())
-    end
-
-    test "set_mode returns error for unknown session" do
-      assert {:error, :not_found} = Session.set_mode(Ecto.UUID.generate(), :architect)
-    end
-  end
-
   describe "architect model resolution" do
-    test "resolves architect model from config" do
-      # Default should be claude-opus-4-6
-      architect = Loom.Config.get(:model, :architect)
-      assert architect == "anthropic:claude-opus-4-6"
+    test "default model config uses primary model" do
+      default = Loom.Config.get(:model, :default)
+      assert default == "anthropic:claude-sonnet-4-6"
     end
 
-    test "resolves editor model from config" do
+    test "editor model defaults to nil (uses primary model)" do
       editor = Loom.Config.get(:model, :editor)
-      assert editor == "anthropic:claude-haiku-4-5"
+      assert is_nil(editor)
     end
   end
 
   describe "architect mode send_message" do
-    test "returns error when LLM fails in architect mode (no API key)" do
+    test "returns error when LLM fails (no API key)" do
       session_id = Ecto.UUID.generate()
 
       {:ok, pid} =
@@ -152,8 +81,6 @@ defmodule Loom.Session.ArchitectTest do
           model: "anthropic:claude-sonnet-4-6",
           project_path: @project_path
         )
-
-      Session.set_mode(pid, :architect)
 
       # This will fail because there's no API key — but it should
       # route through the architect pipeline and fail gracefully

@@ -154,7 +154,7 @@ defmodule Loom.Tools.SubAgent do
   defp weak_model do
     if Code.ensure_loaded?(Loom.Config) do
       try do
-        Loom.Config.get(:model, :weak) || "anthropic:claude-haiku-4-5"
+        Loom.Config.get(:model, :editor) || "anthropic:claude-haiku-4-5"
       rescue
         _ -> "anthropic:claude-haiku-4-5"
       end

@@ -15,12 +15,12 @@ defmodule Loom.ConfigTest do
     test "get/1 returns default model config" do
       model = Loom.Config.get(:model)
       assert model.default == "anthropic:claude-sonnet-4-6"
-      assert model.weak == "anthropic:claude-haiku-4-5"
+      assert is_nil(model.editor)
     end
 
     test "get/2 returns nested values" do
       assert Loom.Config.get(:model, :default) == "anthropic:claude-sonnet-4-6"
-      assert Loom.Config.get(:model, :weak) == "anthropic:claude-haiku-4-5"
+      assert is_nil(Loom.Config.get(:model, :editor))
     end
 
     test "get/1 returns default permissions" do
@@ -71,8 +71,27 @@ defmodule Loom.ConfigTest do
       assert "shell" in Loom.Config.get(:permissions, :auto_approve)
 
       # Preserved defaults (deep merge keeps non-overridden keys)
-      assert Loom.Config.get(:model, :weak) == "anthropic:claude-haiku-4-5"
+      assert is_nil(Loom.Config.get(:model, :editor))
       assert Loom.Config.get(:context, :max_repo_map_tokens) == 2048
+    after
+      File.rm_rf!(@test_dir)
+    end
+
+    test "loads editor model from .loom.toml when explicitly set" do
+      File.mkdir_p!(@test_dir)
+
+      toml_content = """
+      [model]
+      default = "anthropic:claude-sonnet-4-6"
+      editor = "anthropic:claude-haiku-4-5"
+      """
+
+      File.write!(Path.join(@test_dir, ".loom.toml"), toml_content)
+
+      Loom.Config.load(@test_dir)
+
+      assert Loom.Config.get(:model, :default) == "anthropic:claude-sonnet-4-6"
+      assert Loom.Config.get(:model, :editor) == "anthropic:claude-haiku-4-5"
     after
       File.rm_rf!(@test_dir)
     end
@@ -94,8 +113,6 @@ defmodule Loom.ConfigTest do
 
       # Known keys should still be atomized and accessible
       assert Loom.Config.get(:model, :default) == "openai:gpt-4o"
-      # Defaults preserved via deep merge
-      assert Loom.Config.get(:model, :weak) == "anthropic:claude-haiku-4-5"
     after
       File.rm_rf!(@test_dir)
     end
@@ -111,10 +128,10 @@ defmodule Loom.ConfigTest do
 
   describe "put/2" do
     test "overrides a config value for the session" do
-      Loom.Config.put(:model, %{default: "custom:model", weak: "custom:weak"})
+      Loom.Config.put(:model, %{default: "custom:model", editor: "custom:editor"})
 
       assert Loom.Config.get(:model, :default) == "custom:model"
-      assert Loom.Config.get(:model, :weak) == "custom:weak"
+      assert Loom.Config.get(:model, :editor) == "custom:editor"
     end
   end
 

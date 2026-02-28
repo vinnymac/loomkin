@@ -207,8 +207,8 @@ defmodule LoomWeb.WorkspaceLive do
     {:noreply, push_navigate(socket, to: ~p"/sessions/#{session_id}")}
   end
 
-  def handle_info({:permission_response, action, _tool_name, _tool_path}, socket) do
-    Session.respond_to_permission(socket.assigns.session_id, action)
+  def handle_info({:permission_response, _action, _tool_name, _tool_path}, socket) do
+    # Permission responses are handled by the Architect pipeline directly.
     {:noreply, assign(socket, permission_request: nil)}
   end
 

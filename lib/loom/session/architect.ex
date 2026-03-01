@@ -688,15 +688,25 @@ defmodule Loom.Session.Architect do
 
   defp atomize_keys(map) when is_map(map) do
     Map.new(map, fn
-      {k, v} when is_binary(k) -> {String.to_existing_atom(k), atomize_keys(v)}
+      {k, v} when is_binary(k) -> {safe_to_atom(k), atomize_keys(v)}
       {k, v} -> {k, atomize_keys(v)}
     end)
-  rescue
-    ArgumentError -> map
   end
 
   defp atomize_keys(list) when is_list(list), do: Enum.map(list, &atomize_keys/1)
   defp atomize_keys(value), do: value
+
+  # Convert a string key to an atom, handling each key individually so one
+  # unknown key doesn't cause the entire map to fall back to string keys.
+  # Uses to_existing_atom first (safe), falls back to to_atom with a size
+  # guard for LLM-generated tool params which are schema-bounded.
+  defp safe_to_atom(s) when is_binary(s) and byte_size(s) < 256 do
+    String.to_existing_atom(s)
+  rescue
+    ArgumentError -> String.to_atom(s)
+  end
+
+  defp safe_to_atom(s), do: s
 
   defp parse_model(model_string) do
     case String.split(model_string, ":", parts: 2) do

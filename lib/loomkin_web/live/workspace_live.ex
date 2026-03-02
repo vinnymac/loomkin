@@ -357,7 +357,9 @@ defmodule LoomkinWeb.WorkspaceLive do
      )}
   end
 
-  def handle_event("palette_select", %{"type" => "tab", "value" => tab}, socket) do
+  @palette_valid_tabs ~w(files diff terminal graph chat)
+  def handle_event("palette_select", %{"type" => "tab", "value" => tab}, socket)
+      when tab in @palette_valid_tabs do
     {:noreply,
      assign(socket,
        active_inspector_tab: String.to_existing_atom(tab),
@@ -391,7 +393,9 @@ defmodule LoomkinWeb.WorkspaceLive do
      |> push_event("focus-input", %{})}
   end
 
-  def handle_event("palette_select", %{"type" => "sub_tab", "value" => tab}, socket) do
+  @palette_valid_sub_tabs ~w(activity graph)
+  def handle_event("palette_select", %{"type" => "sub_tab", "value" => tab}, socket)
+      when tab in @palette_valid_sub_tabs do
     {:noreply,
      assign(socket,
        team_sub_tab: String.to_existing_atom(tab),
@@ -2158,33 +2162,69 @@ defmodule LoomkinWeb.WorkspaceLive do
   defp handle_collective_decision(question, _pending_questions) do
     team_id = question.team_id
     question_id = question.question_id
-    options_text = Enum.join(question.options, ", ")
+    options = question.options
+    options_text = Enum.join(options, ", ")
 
     collective_prompt =
       "The human deferred this question to the collective. " <>
         "Question from #{question.agent_name}: #{question.question} " <>
         "Options: #{options_text}. " <>
-        "Reply with your preferred option."
+        "Reply with ONLY your preferred option (exact text)."
+
+    # Subscribe to the team topic to collect agent votes
+    vote_topic = "ask_user:vote:#{question_id}"
+    Phoenix.PubSub.subscribe(Loomkin.PubSub, vote_topic)
 
     Phoenix.PubSub.broadcast(
       Loomkin.PubSub,
       "team:#{team_id}",
-      {:peer_message, "system", collective_prompt}
+      {:peer_message, "system", collective_prompt,
+       %{reply_topic: vote_topic, question_id: question_id, options: options}}
     )
 
-    # Fallback: if no agent answers within 30s, use the first option
+    # Collect votes in a background task and deliver the result
     Task.Supervisor.start_child(Loomkin.Teams.TaskSupervisor, fn ->
-      Process.sleep(30_000)
+      votes = collect_votes(vote_topic, options, 30_000)
 
-      case Registry.lookup(Loomkin.Teams.AgentRegistry, {:ask_user, question_id}) do
-        [{pid, _}] ->
-          fallback = List.first(question.options) || "No consensus"
-          send(pid, {:ask_user_answer, question_id, "Collective: #{fallback}"})
+      winner =
+        if votes == [] do
+          List.first(options) || "No consensus"
+        else
+          votes
+          |> Enum.frequencies()
+          |> Enum.max_by(fn {_opt, count} -> count end)
+          |> elem(0)
+        end
 
-        [] ->
-          :ok
-      end
+      send_ask_user_answer(question_id, "Collective: #{winner}")
+      Phoenix.PubSub.unsubscribe(Loomkin.PubSub, vote_topic)
     end)
+  end
+
+  defp collect_votes(topic, valid_options, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_collect_votes(topic, valid_options, deadline, [])
+  end
+
+  defp do_collect_votes(topic, valid_options, deadline, votes) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    if remaining <= 0 do
+      votes
+    else
+      receive do
+        {:collective_vote, _agent, option} ->
+          # Only count votes that match a valid option
+          if option in valid_options do
+            do_collect_votes(topic, valid_options, deadline, [option | votes])
+          else
+            do_collect_votes(topic, valid_options, deadline, votes)
+          end
+      after
+        min(remaining, 1_000) ->
+          do_collect_votes(topic, valid_options, deadline, votes)
+      end
+    end
   end
 
   # --- Command Palette ---

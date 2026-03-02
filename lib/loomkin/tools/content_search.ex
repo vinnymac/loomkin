@@ -74,11 +74,16 @@ defmodule Loomkin.Tools.ContentSearch do
 
     case File.read(file_path) do
       {:ok, content} ->
-        content
-        |> String.split("\n")
-        |> Enum.with_index(1)
-        |> Enum.filter(fn {line, _} -> Regex.match?(regex, line) end)
-        |> Enum.map(fn {line, num} -> "#{rel_path}:#{num}:#{String.trim_trailing(line)}" end)
+        if String.valid?(content) do
+          content
+          |> String.split("\n")
+          |> Enum.with_index(1)
+          |> Enum.filter(fn {line, _} -> Regex.match?(regex, line) end)
+          |> Enum.map(fn {line, num} -> "#{rel_path}:#{num}:#{String.trim_trailing(line)}" end)
+        else
+          # Skip binary or non-UTF-8 files
+          []
+        end
 
       {:error, _} ->
         []

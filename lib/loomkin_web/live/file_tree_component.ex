@@ -21,22 +21,28 @@ defmodule LoomkinWeb.FileTreeComponent do
   end
 
   @impl true
-  def update(%{__async_result__: {tree, file_count, total_size}}, socket) do
-    filtered_tree =
-      case socket.assigns.filter do
-        "" -> tree
-        f -> filter_tree(tree, String.downcase(f))
-      end
+  def update(%{__async_result__: {scanned_path, tree, file_count, total_size}}, socket) do
+    # Only apply results if they match the current project_path (guards against stale scans)
+    if scanned_path == socket.assigns[:project_path] do
+      filtered_tree =
+        case socket.assigns.filter do
+          "" -> tree
+          f -> filter_tree(tree, String.downcase(f))
+        end
 
-    {:ok,
-     assign(socket,
-       tree: filtered_tree,
-       full_tree: tree,
-       file_count: file_count,
-       total_size: total_size,
-       loading: false,
-       scan_task: nil
-     )}
+      {:ok,
+       assign(socket,
+         tree: filtered_tree,
+         full_tree: tree,
+         file_count: file_count,
+         total_size: total_size,
+         loading: false,
+         scan_task: nil
+       )}
+    else
+      # Stale result from a previous path — discard
+      {:ok, socket}
+    end
   end
 
   def update(assigns, socket) do
@@ -194,8 +200,8 @@ defmodule LoomkinWeb.FileTreeComponent do
 
     {:ok, pid} =
       Task.start(fn ->
-        result = build_tree(project_path)
-        send_update(parent_pid, __MODULE__, id: component_id, __async_result__: result)
+        {tree, file_count, total_size} = build_tree(project_path)
+        send_update(parent_pid, __MODULE__, id: component_id, __async_result__: {project_path, tree, file_count, total_size})
       end)
 
     assign(socket, loading: true, scan_task: pid)

@@ -479,15 +479,40 @@ defmodule Loomkin.AgentLoop do
 
   @doc false
   def format_tool_result(result) do
-    case result do
-      {:ok, %{result: text}} -> text
-      {:ok, text} when is_binary(text) -> text
-      {:ok, map} when is_map(map) -> inspect(map)
-      {:error, %{message: msg}} -> "Error: #{msg}"
-      {:error, text} when is_binary(text) -> "Error: #{text}"
-      {:error, reason} -> "Error: #{inspect(reason)}"
+    text =
+      case result do
+        {:ok, %{result: text}} -> text
+        {:ok, text} when is_binary(text) -> text
+        {:ok, map} when is_map(map) -> inspect(map)
+        {:error, %{message: msg}} -> "Error: #{msg}"
+        {:error, text} when is_binary(text) -> "Error: #{text}"
+        {:error, reason} -> "Error: #{inspect(reason)}"
+      end
+
+    sanitize_utf8(text)
+  end
+
+  # Replace invalid UTF-8 bytes with the Unicode replacement character (U+FFFD)
+  # so that downstream JSON encoding (Jason) never crashes.
+  defp sanitize_utf8(text) when is_binary(text) do
+    if String.valid?(text) do
+      text
+    else
+      # :unicode.characters_to_binary with :latin1 input replaces invalid sequences
+      text
+      |> :unicode.characters_to_binary(:utf8, :utf8)
+      |> case do
+        result when is_binary(result) -> result
+        _ -> strip_invalid_utf8(text, <<>>)
+      end
     end
   end
+
+  defp sanitize_utf8(nil), do: nil
+
+  defp strip_invalid_utf8(<<>>, acc), do: acc
+  defp strip_invalid_utf8(<<c::utf8, rest::binary>>, acc), do: strip_invalid_utf8(rest, <<acc::binary, c::utf8>>)
+  defp strip_invalid_utf8(<<_byte, rest::binary>>, acc), do: strip_invalid_utf8(rest, <<acc::binary, "�"::utf8>>)
 
   defp parse_model(model_string) do
     case String.split(model_string, ":", parts: 2) do

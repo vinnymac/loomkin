@@ -25,6 +25,7 @@ loomkin-*.tar
 
 # Phoenix/assets
 /priv/static/assets/
+/assets/node_modules/
 npm-debug.log
 
 # Database files

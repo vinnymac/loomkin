@@ -5,6 +5,29 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 
+// Syntax highlighting (selective language imports to keep bundle small)
+import hljs from "highlight.js/lib/core"
+import elixir from "highlight.js/lib/languages/elixir"
+import javascript from "highlight.js/lib/languages/javascript"
+import json from "highlight.js/lib/languages/json"
+import bash from "highlight.js/lib/languages/bash"
+import css from "highlight.js/lib/languages/css"
+import xml from "highlight.js/lib/languages/xml"
+import markdown from "highlight.js/lib/languages/markdown"
+import yaml from "highlight.js/lib/languages/yaml"
+import diff from "highlight.js/lib/languages/diff"
+
+hljs.registerLanguage("elixir", elixir)
+hljs.registerLanguage("javascript", javascript)
+hljs.registerLanguage("json", json)
+hljs.registerLanguage("bash", bash)
+hljs.registerLanguage("css", css)
+hljs.registerLanguage("xml", xml)
+hljs.registerLanguage("html", xml)
+hljs.registerLanguage("markdown", markdown)
+hljs.registerLanguage("yaml", yaml)
+hljs.registerLanguage("diff", diff)
+
 // --- Hooks ---
 
 let Hooks = {}
@@ -161,18 +184,25 @@ Hooks.CopyToClipboard = {
 Hooks.KeyboardShortcuts = {
   mounted() {
     this.handleKeydown = (e) => {
-      // Don't fire in input/textarea unless Esc
       const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA'
+      const mod = e.metaKey || e.ctrlKey
 
+      // Escape always works (close modals, command palette, etc.)
       if (e.key === 'Escape') {
         e.preventDefault()
         this.pushEvent('keyboard_shortcut', { key: 'escape' })
         return
       }
 
-      if (isInput) return
+      // Cmd/Ctrl+K always works (opens command palette even from inputs)
+      if (mod && e.key === 'k') {
+        e.preventDefault()
+        this.pushEvent('keyboard_shortcut', { key: 'command_palette' })
+        return
+      }
 
-      const mod = e.metaKey || e.ctrlKey
+      // Remaining shortcuts disabled in input fields
+      if (isInput) return
 
       if (mod && e.key === 'm') {
         e.preventDefault()
@@ -180,7 +210,7 @@ Hooks.KeyboardShortcuts = {
       } else if (mod && e.key === '.') {
         e.preventDefault()
         this.pushEvent('keyboard_shortcut', { key: 'cancel' })
-      } else if (mod && e.key >= '1' && e.key <= '3') {
+      } else if (mod && e.key >= '1' && e.key <= '5') {
         e.preventDefault()
         this.pushEvent('keyboard_shortcut', { key: `focus_panel_${e.key}` })
       } else if (e.key === '/' && !mod) {
@@ -192,6 +222,12 @@ Hooks.KeyboardShortcuts = {
       } else if (e.key === 'ArrowRight' && !mod) {
         e.preventDefault()
         this.pushEvent('keyboard_shortcut', { key: 'next_agent' })
+      } else if (e.key === 'j' && !mod) {
+        e.preventDefault()
+        this.pushEvent('keyboard_shortcut', { key: 'jump_active_agent' })
+      } else if (e.key === 'a' && !mod) {
+        e.preventDefault()
+        this.pushEvent('keyboard_shortcut', { key: 'toggle_activity' })
       }
     }
 
@@ -199,6 +235,79 @@ Hooks.KeyboardShortcuts = {
   },
   destroyed() {
     document.removeEventListener('keydown', this.handleKeydown)
+  }
+}
+
+// CommandPalette: handles search input focus and result navigation
+Hooks.CommandPalette = {
+  mounted() {
+    const input = this.el.querySelector('#command-palette-input')
+    if (input) requestAnimationFrame(() => input.focus())
+
+    this._onKeydown = (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        const items = Array.from(this.el.querySelectorAll('[data-palette-item]'))
+        if (items.length === 0) return
+
+        const focused = this.el.querySelector('[data-palette-item]:focus')
+        let idx = items.indexOf(focused)
+
+        if (e.key === 'ArrowDown') {
+          idx = idx < items.length - 1 ? idx + 1 : 0
+        } else {
+          idx = idx > 0 ? idx - 1 : items.length - 1
+        }
+        items[idx].focus()
+      }
+
+      if (e.key === 'Enter') {
+        const focused = this.el.querySelector('[data-palette-item]:focus')
+        if (focused) {
+          e.preventDefault()
+          focused.click()
+        }
+      }
+    }
+    this.el.addEventListener('keydown', this._onKeydown)
+  },
+  updated() {
+    const input = this.el.querySelector('#command-palette-input')
+    if (input && document.activeElement !== input) {
+      const items = this.el.querySelectorAll('[data-palette-item]:focus')
+      if (items.length === 0) input.focus()
+    }
+  },
+  destroyed() {
+    this.el.removeEventListener('keydown', this._onKeydown)
+  }
+}
+
+// SyntaxHighlight: applies highlight.js syntax highlighting with line numbers
+Hooks.SyntaxHighlight = {
+  mounted() {
+    this.highlight()
+  },
+  updated() {
+    this.highlight()
+  },
+  highlight() {
+    const codeEl = this.el.querySelector("code")
+    if (!codeEl) return
+    // Remove previous highlighting so hljs re-processes
+    codeEl.removeAttribute("data-highlighted")
+    hljs.highlightElement(codeEl)
+    this.addLineNumbers(codeEl)
+  },
+  addLineNumbers(codeEl) {
+    // Skip if already processed
+    if (codeEl.querySelector(".file-preview-line")) return
+    const html = codeEl.innerHTML
+    const lines = html.split("\n")
+    // Wrap each line in a span for CSS counter-based line numbers
+    codeEl.innerHTML = lines
+      .map(line => `<span class="file-preview-line">${line}</span>`)
+      .join("")
   }
 }
 

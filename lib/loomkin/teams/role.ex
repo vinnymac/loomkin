@@ -63,7 +63,8 @@ defmodule Loomkin.Teams.Role do
     Loomkin.Tools.PeerForwardQuestion,
     Loomkin.Tools.PeerChangeRole,
     Loomkin.Tools.ContextRetrieve,
-    Loomkin.Tools.ContextOffload
+    Loomkin.Tools.ContextOffload,
+    Loomkin.Tools.AskUser
   ]
 
   @lead_tools [
@@ -116,7 +117,8 @@ defmodule Loomkin.Teams.Role do
     "peer_forward_question" => Loomkin.Tools.PeerForwardQuestion,
     "peer_change_role" => Loomkin.Tools.PeerChangeRole,
     "context_retrieve" => Loomkin.Tools.ContextRetrieve,
-    "context_offload" => Loomkin.Tools.ContextOffload
+    "context_offload" => Loomkin.Tools.ContextOffload,
+    "ask_user" => Loomkin.Tools.AskUser
   }
 
   # -- Context Mesh prompt blocks --

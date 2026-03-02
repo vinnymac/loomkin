@@ -831,11 +831,6 @@ defmodule Loomkin.Teams.Agent do
       end,
       on_tool_execute: fn tool_module, tool_args, context ->
         # Inject agent messages into context for ContextOffload to avoid deadlock.
-        # The tool runs inside the agent's handle_call (via AgentLoop → Jido.Exec Task),
-        # so calling Agent.get_history(pid) would deadlock on GenServer.call to self.
-        # Note: state.messages is captured at loop start. Messages added mid-loop
-        # (from tool results) won't be in the offloaded set — this is acceptable
-        # since the agent loop runs synchronously within a single handle_call.
         context =
           if tool_module == Loomkin.Tools.ContextOffload do
             Map.put(context, :agent_messages, state.messages)
@@ -843,7 +838,22 @@ defmodule Loomkin.Teams.Agent do
             context
           end
 
-        AgentLoop.default_run_tool(tool_module, tool_args, context)
+        # AskUser blocks waiting for human input (up to 5 min), so bypass the
+        # default 60s Jido.Exec timeout and call run/2 directly.
+        if tool_module == Loomkin.Tools.AskUser do
+          atomized = Loomkin.Tools.Registry.atomize_keys(tool_args)
+
+          result =
+            try do
+              tool_module.run(atomized, context)
+            rescue
+              e -> {:error, Exception.message(e)}
+            end
+
+          AgentLoop.format_tool_result(result)
+        else
+          AgentLoop.default_run_tool(tool_module, tool_args, context)
+        end
       end
     ]
   end

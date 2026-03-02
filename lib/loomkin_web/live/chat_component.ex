@@ -1,10 +1,50 @@
 defmodule LoomkinWeb.ChatComponent do
   use LoomkinWeb, :live_component
 
-  def update(assigns, socket) do
+  def mount(socket) do
     {:ok,
      socket
-     |> assign(assigns)}
+     |> assign(msg_count: 0, has_messages: false)
+     |> stream(:messages, [])}
+  end
+
+  def update(assigns, socket) do
+    old_count = socket.assigns.msg_count
+    messages = assigns[:messages] || []
+    new_count = length(messages)
+
+    socket = assign(socket, Map.drop(assigns, [:messages]))
+
+    socket =
+      cond do
+        # First render with history — reset stream with all messages
+        old_count == 0 && new_count > 0 ->
+          wrapped = wrap_messages(messages, 0)
+          stream(socket, :messages, wrapped, reset: true)
+
+        # New messages appended
+        new_count > old_count ->
+          new_msgs = Enum.drop(messages, old_count)
+          wrapped = wrap_messages(new_msgs, old_count)
+
+          Enum.reduce(wrapped, socket, fn msg, sock ->
+            stream_insert(sock, :messages, msg)
+          end)
+
+        # No change
+        true ->
+          socket
+      end
+
+    {:ok, assign(socket, msg_count: new_count, has_messages: new_count > 0)}
+  end
+
+  defp wrap_messages(messages, start_idx) do
+    messages
+    |> Enum.with_index(start_idx)
+    |> Enum.map(fn {msg, idx} ->
+      Map.put(msg, :id, "msg-#{idx}")
+    end)
   end
 
   def handle_event("select_prompt", %{"prompt" => prompt}, socket) do
@@ -17,7 +57,7 @@ defmodule LoomkinWeb.ChatComponent do
     <div class="flex-1 overflow-auto" id="chat-messages" phx-hook="ScrollToBottom">
       <div class="flex flex-col gap-4 p-4">
         <%!-- Empty State --%>
-        <div :if={@messages == []} class="flex items-center justify-center h-64">
+        <div :if={!@has_messages} class="flex items-center justify-center h-64">
           <div class="text-center space-y-4">
             <div class="w-12 h-12 mx-auto rounded-2xl bg-violet-600/20 flex items-center justify-center shadow-lg shadow-violet-500/10">
               <span class="text-xl font-bold text-violet-400">L</span>
@@ -40,63 +80,65 @@ defmodule LoomkinWeb.ChatComponent do
           </div>
         </div>
 
-        <%!-- Messages --%>
-        <div :for={msg <- @messages} class="animate-fade-in-up">
-          <%= case msg.role do %>
-            <% :user -> %>
-              <div class="flex items-start gap-3 justify-end max-w-[80%] ml-auto">
-                <div class="bg-gray-700/80 rounded-2xl px-4 py-2.5 text-sm shadow-sm">
-                  <p class="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                </div>
-                <div class="w-7 h-7 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <span class="text-xs font-bold text-white">U</span>
-                </div>
-              </div>
-
-            <% :assistant -> %>
-              <div class="flex items-start gap-3 max-w-[85%]">
-                <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-violet-500/30">
-                  <span class="text-xs font-bold text-white">L</span>
-                </div>
-                <div class="border-l-2 border-violet-500/40 pl-3 py-0.5">
-                  <div class="max-w-none chat-markdown">
-                    {render_markdown(msg.content)}
+        <%!-- Messages (streamed) --%>
+        <div id={"#{@id}-message-stream"} phx-update="stream">
+          <div :for={{dom_id, msg} <- @streams.messages} id={dom_id} class="animate-fade-in-up">
+            <%= case msg.role do %>
+              <% :user -> %>
+                <div class="flex items-start gap-3 justify-end max-w-[80%] ml-auto">
+                  <div class="bg-gray-700/80 rounded-2xl px-4 py-2.5 text-sm shadow-sm">
+                    <p class="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                  </div>
+                  <div class="w-7 h-7 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+                    <span class="text-xs font-bold text-white">U</span>
                   </div>
                 </div>
-              </div>
 
-            <% :tool -> %>
-              <div class="max-w-[85%] ml-10 animate-fade-in-up">
-                <%= if String.starts_with?(msg.content || "", "Error:") do %>
-                  <div class="rounded-xl overflow-hidden border border-red-500/30 bg-red-950/20 px-3 py-2">
-                    <div class="flex items-center gap-2 text-xs font-medium text-red-400">
-                      <span class="text-red-400">&#9888;</span>
-                      <span>{tool_display_name(msg)}</span>
-                    </div>
-                    <pre class="text-xs text-red-300/80 whitespace-pre-wrap mt-1">{msg.content}</pre>
+              <% :assistant -> %>
+                <div class="flex items-start gap-3 max-w-[85%]">
+                  <div class="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-violet-500/30">
+                    <span class="text-xs font-bold text-white">L</span>
                   </div>
-                <% else %>
-                  <div class={"tool-card rounded-xl overflow-hidden border transition-all duration-200 #{tool_card_border(msg)}"}>
-                    <div
-                      class={"flex items-center gap-2 px-3 py-2 cursor-pointer select-none text-xs font-medium #{tool_card_header(msg)}"}
-                      onclick="this.parentElement.classList.toggle('tool-expanded')"
-                    >
-                      <span class="tool-card-icon">{tool_icon(msg)}</span>
-                      <span>{tool_display_name(msg)}</span>
-                      <span class="ml-auto text-gray-500 tool-card-chevron transition-transform duration-200">&#9656;</span>
-                    </div>
-                    <div class="tool-card-body px-3 py-2 border-t border-gray-800/50 bg-gray-900/30">
-                      <pre class="text-xs text-gray-400 whitespace-pre-wrap overflow-x-auto font-mono leading-relaxed tool-file-paths">{truncate_result(msg.content)}</pre>
+                  <div class="border-l-2 border-violet-500/40 pl-3 py-0.5">
+                    <div class="max-w-none chat-markdown">
+                      {render_markdown(msg.content)}
                     </div>
                   </div>
-                <% end %>
-              </div>
+                </div>
 
-            <% _ -> %>
-              <div class="text-xs text-gray-500 px-3">
-                {inspect(msg)}
-              </div>
-          <% end %>
+              <% :tool -> %>
+                <div class="max-w-[85%] ml-10 animate-fade-in-up">
+                  <%= if String.starts_with?(msg.content || "", "Error:") do %>
+                    <div class="rounded-xl overflow-hidden border border-red-500/30 bg-red-950/20 px-3 py-2">
+                      <div class="flex items-center gap-2 text-xs font-medium text-red-400">
+                        <span class="text-red-400">&#9888;</span>
+                        <span>{tool_display_name(msg)}</span>
+                      </div>
+                      <pre class="text-xs text-red-300/80 whitespace-pre-wrap mt-1">{msg.content}</pre>
+                    </div>
+                  <% else %>
+                    <div class={"tool-card rounded-xl overflow-hidden border transition-all duration-200 #{tool_card_border(msg)}"}>
+                      <div
+                        class={"flex items-center gap-2 px-3 py-2 cursor-pointer select-none text-xs font-medium #{tool_card_header(msg)}"}
+                        onclick="this.parentElement.classList.toggle('tool-expanded')"
+                      >
+                        <span class="tool-card-icon">{tool_icon(msg)}</span>
+                        <span>{tool_display_name(msg)}</span>
+                        <span class="ml-auto text-gray-500 tool-card-chevron transition-transform duration-200">&#9656;</span>
+                      </div>
+                      <div class="tool-card-body px-3 py-2 border-t border-gray-800/50 bg-gray-900/30">
+                        <pre class="text-xs text-gray-400 whitespace-pre-wrap overflow-x-auto font-mono leading-relaxed tool-file-paths">{truncate_result(msg.content)}</pre>
+                      </div>
+                    </div>
+                  <% end %>
+                </div>
+
+              <% _ -> %>
+                <div class="text-xs text-gray-500 px-3">
+                  {inspect(msg)}
+                </div>
+            <% end %>
+          </div>
         </div>
 
         <%!-- Streaming / Thinking State --%>

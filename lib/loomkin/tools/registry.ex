@@ -21,7 +21,8 @@ defmodule Loomkin.Tools.Registry do
     Loomkin.Tools.ContextOffload,
     Loomkin.Tools.PeerAskQuestion,
     Loomkin.Tools.PeerAnswerQuestion,
-    Loomkin.Tools.PeerForwardQuestion
+    Loomkin.Tools.PeerForwardQuestion,
+    Loomkin.Tools.AskUser
   ]
 
   @lead_tools [
@@ -103,6 +104,7 @@ defmodule Loomkin.Tools.Registry do
     question target context query keeper_id mode topic message_count
     query_id answer enrichment to new_role require_approval
     start_line end_line diff task scope severity task_id result name role count
+    options
   )a
 
   @known_param_key_map Map.new(@known_param_keys, fn atom -> {Atom.to_string(atom), atom} end)

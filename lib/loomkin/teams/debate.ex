@@ -165,7 +165,7 @@ defmodule Loomkin.Teams.Debate do
 
   # -- Voting & result --
 
-  defp tally_and_build_result(team_id, debate_id, _topic, participants, rounds, timeout, session_id) do
+  defp tally_and_build_result(team_id, debate_id, topic, participants, rounds, timeout, session_id) do
     # Request votes from all participants
     final_proposals = build_final_proposals(rounds)
 
@@ -176,46 +176,44 @@ defmodule Loomkin.Teams.Debate do
     votes = collect_responses(debate_id, :vote, participants, timeout)
     vote_map = Map.new(votes, fn v -> {v.from, v.choice} end)
 
-    # Tally votes
-    tallied =
-      Enum.reduce(vote_map, %{}, fn {_voter, choice}, acc ->
-        Map.update(acc, choice, 1, &(&1 + 1))
-      end)
+    # Get agent info for weighted voting
+    agents = Loomkin.Teams.Context.list_agents(team_id)
 
-    {winner_id, _count} =
-      if tallied == %{} do
-        {nil, 0}
-      else
-        Enum.max_by(tallied, fn {_k, v} -> v end)
-      end
+    # Use weighted tallying
+    weighted = tally_weighted_votes(votes, agents, topic, "general")
+
+    # Find the winning proposal by weighted winner
+    winner_id = weighted.winner
 
     winner =
       Enum.find(final_proposals, fn p ->
         p.from == winner_id || p[:node_id] == winner_id
       end)
 
-    consensus? = map_size(tallied) <= 1 and map_size(vote_map) == length(participants)
+    consensus? = weighted.consensus?
 
-    # Log the winning decision
+    # Log the winning decision with weight info
     if winner do
       {:ok, decision_node} =
         Graph.add_node(%{
           node_type: :decision,
           title: "Debate winner: #{truncate(winner.content, 80)}",
           description: winner.content,
-          confidence: if(consensus?, do: 90, else: 60),
+          confidence: if(consensus?, do: 90, else: round(weighted.winning_weight_pct)),
           agent_name: winner.from,
           session_id: session_id,
           metadata: %{
             debate_id: debate_id,
             votes: vote_map,
-            consensus: consensus?
+            consensus: consensus?,
+            weighted_tallies: weighted.weighted_tallies,
+            vote_weights: weighted.vote_weights
           }
         })
 
       if winner[:node_id] do
         Graph.add_edge(winner.node_id, decision_node.id, :leads_to,
-          rationale: "selected by vote"
+          rationale: "selected by weighted vote"
         )
       end
     end
@@ -224,7 +222,9 @@ defmodule Loomkin.Teams.Debate do
       winner: winner,
       votes: vote_map,
       rounds: rounds,
-      consensus?: consensus?
+      consensus?: consensus?,
+      weighted_tallies: weighted.weighted_tallies,
+      vote_weights: weighted.vote_weights
     }
   end
 
@@ -282,6 +282,140 @@ defmodule Loomkin.Teams.Debate do
 
   defp truncate(text, max) when byte_size(text) <= max, do: text
   defp truncate(text, max), do: String.slice(text, 0, max) <> "..."
+
+  # -- Weighted Voting --
+
+  @doc """
+  Calculate the expertise weight for a given agent role and decision topic/scope.
+
+  Returns a float between 0.5 and 2.0 representing how relevant the agent's
+  role is to the decision scope. Higher weight = more expertise.
+
+  ## Examples
+
+      iex> Debate.expertise_weight(:coder, "code")
+      2.0
+
+      iex> Debate.expertise_weight(:researcher, "code")
+      1.0
+  """
+  @spec expertise_weight(atom(), String.t()) :: float()
+  def expertise_weight(role, scope) when is_atom(role) and is_binary(scope) do
+    scope = String.downcase(scope)
+
+    role_strengths = %{
+      lead: ~w(architecture planning coordination general),
+      coder: ~w(code implementation refactoring debugging),
+      researcher: ~w(research analysis investigation codebase),
+      reviewer: ~w(code review quality security),
+      tester: ~w(testing validation quality)
+    }
+
+    strengths = Map.get(role_strengths, role, [])
+
+    cond do
+      scope in strengths -> 2.0
+      scope == "general" -> 1.0
+      partial_match?(strengths, scope) -> 1.5
+      true -> 0.5
+    end
+  end
+
+  def expertise_weight(_role, _scope), do: 1.0
+
+  defp partial_match?(strengths, scope) do
+    Enum.any?(strengths, fn s ->
+      String.contains?(scope, s) or String.contains?(s, scope)
+    end)
+  end
+
+  @doc """
+  Compute the overall vote weight for an agent.
+
+  Combines three factors:
+  - Role expertise weight (0.5-2.0) based on role vs decision scope
+  - Capability score (0.0-1.0) from agent info, defaults to 0.5
+  - Stated confidence (0.0-1.0) from the vote itself, defaults to 0.5
+
+  Final weight = expertise * (0.5 + 0.25 * capability + 0.25 * confidence)
+  """
+  @spec compute_vote_weight(map(), atom(), String.t(), float()) :: float()
+  def compute_vote_weight(agent_info, role, scope, stated_confidence \\ 0.5) do
+    expertise = expertise_weight(role, scope)
+    capability = Map.get(agent_info, :capability_score, 0.5)
+    confidence = clamp(stated_confidence, 0.0, 1.0)
+
+    expertise * (0.5 + 0.25 * capability + 0.25 * confidence)
+  end
+
+  @doc """
+  Tally votes with weights. Returns a result map with raw tallies, weighted
+  tallies, per-agent weights, winner, and consensus flag.
+
+  ## Parameters
+  - `votes` — list of `%{from: name, choice: option, confidence: 0.0..1.0}`
+  - `agents` — list of agent info maps `%{name: _, role: _, ...}`
+  - `topic` — the decision topic string
+  - `scope` — the decision scope for expertise weighting
+  """
+  @spec tally_weighted_votes([map()], [map()], String.t(), String.t()) :: map()
+  def tally_weighted_votes(votes, agents, _topic, scope) do
+    agent_map = Map.new(agents, fn a -> {to_string(a.name), a} end)
+
+    # Compute per-voter weight
+    vote_weights =
+      Map.new(votes, fn vote ->
+        from = to_string(vote.from)
+        agent = Map.get(agent_map, from, %{role: :coder})
+        role = agent[:role] || :coder
+        confidence = vote[:confidence] || 0.5
+
+        {from, compute_vote_weight(agent, role, scope, confidence)}
+      end)
+
+    # Raw tallies (simple count)
+    raw_tallies =
+      Enum.reduce(votes, %{}, fn vote, acc ->
+        choice = to_string(vote.choice)
+        Map.update(acc, choice, 1, &(&1 + 1))
+      end)
+
+    # Weighted tallies
+    weighted_tallies =
+      Enum.reduce(votes, %{}, fn vote, acc ->
+        choice = to_string(vote.choice)
+        from = to_string(vote.from)
+        weight = Map.get(vote_weights, from, 1.0)
+        Map.update(acc, choice, weight, &(&1 + weight))
+      end)
+
+    # Determine winner by weighted tally
+    {winner, winning_weight} =
+      if weighted_tallies == %{} do
+        {nil, 0.0}
+      else
+        Enum.max_by(weighted_tallies, fn {_k, v} -> v end)
+      end
+
+    total_weight = Enum.reduce(weighted_tallies, 0.0, fn {_k, v}, acc -> acc + v end)
+
+    winning_weight_pct =
+      if total_weight > 0, do: winning_weight / total_weight * 100, else: 0.0
+
+    unique_choices = Map.keys(weighted_tallies)
+    consensus? = length(unique_choices) <= 1 and length(votes) > 0
+
+    %{
+      winner: winner,
+      raw_tallies: raw_tallies,
+      weighted_tallies: weighted_tallies,
+      vote_weights: vote_weights,
+      consensus?: consensus?,
+      winning_weight_pct: winning_weight_pct
+    }
+  end
+
+  defp clamp(val, min, max), do: val |> Kernel.max(min) |> Kernel.min(max)
 
   @doc """
   Submit a debate response from a participant.

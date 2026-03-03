@@ -789,6 +789,21 @@ defmodule Loomkin.Teams.Agent do
   end
 
   @impl true
+  def handle_info({:vote_request, vote_id, topic, options, scope}, state) do
+    options_text = Enum.map_join(options, "\n", fn opt -> "- #{opt}" end)
+
+    spawn_vote_response(state, vote_id, topic, options, """
+    [Collective Vote] Topic: #{topic} (scope: #{scope})
+    Options:
+    #{options_text}
+
+    Choose one of the options above. Respond with ONLY the exact option text and nothing else.
+    """)
+
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_info({:inject_system_message, content}, state) do
     msg = %{role: :system, content: content}
     {:noreply, %{state | messages: state.messages ++ [msg]}}
@@ -849,6 +864,42 @@ defmodule Loomkin.Teams.Agent do
     })
   rescue
     _ -> :ok
+  end
+
+  defp spawn_vote_response(state, vote_id, _topic, options, prompt) do
+    team_id = state.team_id
+    agent_name = to_string(state.name)
+    model = state.model
+    messages = state.messages ++ [%{role: :user, content: prompt}]
+
+    Task.Supervisor.start_child(Loomkin.Teams.TaskSupervisor, fn ->
+      loop_opts = [
+        model: model,
+        tools: [],
+        system_prompt: "You are voting in a collective decision. Respond with only the chosen option text.",
+        project_path: state.project_path
+      ]
+
+      response_text =
+        case AgentLoop.run(messages, loop_opts) do
+          {:ok, text, _msgs, _meta} -> String.trim(text)
+          _ -> List.first(options) || "abstain"
+        end
+
+      # Match response to closest option
+      choice =
+        Enum.find(options, response_text, fn opt ->
+          String.downcase(opt) == String.downcase(response_text)
+        end)
+
+      response = %{from: agent_name, choice: choice, confidence: 0.5}
+
+      Phoenix.PubSub.broadcast(
+        Loomkin.PubSub,
+        "team:#{team_id}:vote:#{vote_id}",
+        {:vote_response, vote_id, response}
+      )
+    end)
   end
 
   defp spawn_debate_response(state, debate_id, phase, prompt) do

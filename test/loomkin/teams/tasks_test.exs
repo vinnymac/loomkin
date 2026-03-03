@@ -1,7 +1,7 @@
 defmodule Loomkin.Teams.TasksTest do
   use Loomkin.DataCase, async: false
 
-  alias Loomkin.Teams.{Comms, Context, Manager, Tasks}
+  alias Loomkin.Teams.{Capabilities, Comms, Context, Manager, Tasks}
 
   setup do
     {:ok, team_id} = Manager.create_team(name: "tasks-test")
@@ -212,6 +212,65 @@ defmodule Loomkin.Teams.TasksTest do
 
       assert_receive {:tasks_unblocked, ids}
       assert blocked.id in ids
+    end
+  end
+
+  # -- Smart Assignment --
+
+  describe "smart_assign/2" do
+    test "assigns to best capable idle agent", %{team_id: team_id} do
+      # Register two idle agents
+      Context.register_agent(team_id, "alice", %{role: :coder, status: :idle})
+      Context.register_agent(team_id, "bob", %{role: :coder, status: :idle})
+
+      # Give alice strong coding capability
+      for _ <- 1..5, do: Capabilities.record_completion(team_id, "alice", :coding, :success)
+      # Give bob weaker coding capability
+      Capabilities.record_completion(team_id, "bob", :coding, :success)
+      Capabilities.record_completion(team_id, "bob", :coding, :failure)
+
+      {:ok, task} = Tasks.create_task(team_id, %{title: "Implement feature"})
+      assert {:ok, assigned, reason} = Tasks.smart_assign(team_id, task.id)
+      assert assigned.owner == "alice"
+      assert reason =~ "Best at coding"
+    end
+
+    test "falls back to least-loaded agent when no capability data", %{team_id: team_id} do
+      Context.register_agent(team_id, "alice", %{role: :coder, status: :idle})
+      Context.register_agent(team_id, "bob", %{role: :coder, status: :idle})
+
+      # Give alice an existing task to increase her load
+      {:ok, existing} = Tasks.create_task(team_id, %{title: "Existing work"})
+      Tasks.assign_task(existing.id, "alice")
+
+      {:ok, task} = Tasks.create_task(team_id, %{title: "New work"})
+      assert {:ok, assigned, reason} = Tasks.smart_assign(team_id, task.id)
+      assert assigned.owner == "bob"
+      assert reason =~ "Least loaded"
+    end
+
+    test "returns error when no idle agents", %{team_id: team_id} do
+      Context.register_agent(team_id, "alice", %{role: :coder, status: :working})
+
+      {:ok, task} = Tasks.create_task(team_id, %{title: "No one free"})
+      assert {:error, :no_idle_agents} = Tasks.smart_assign(team_id, task.id)
+    end
+
+    test "returns error for non-existent task", %{team_id: team_id} do
+      Context.register_agent(team_id, "alice", %{role: :coder, status: :idle})
+      assert {:error, :not_found} = Tasks.smart_assign(team_id, Ecto.UUID.generate())
+    end
+
+    test "skips busy agents even if they have better capabilities", %{team_id: team_id} do
+      Context.register_agent(team_id, "alice", %{role: :coder, status: :working})
+      Context.register_agent(team_id, "bob", %{role: :coder, status: :idle})
+
+      # Alice is better but busy
+      for _ <- 1..5, do: Capabilities.record_completion(team_id, "alice", :coding, :success)
+
+      {:ok, task} = Tasks.create_task(team_id, %{title: "Implement something"})
+      assert {:ok, assigned, _reason} = Tasks.smart_assign(team_id, task.id)
+      assert assigned.owner == "bob"
     end
   end
 end

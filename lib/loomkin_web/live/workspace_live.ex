@@ -51,7 +51,9 @@ defmodule LoomkinWeb.WorkspaceLive do
         command_palette_query: "",
         command_palette_results: [],
         # Ask-user pending questions
-        pending_questions: []
+        pending_questions: [],
+        # Collaboration health score (0-100)
+        collab_health: nil
       )
 
     case socket.assigns.live_action do
@@ -964,6 +966,19 @@ defmodule LoomkinWeb.WorkspaceLive do
     {:noreply, socket}
   end
 
+  # Collaboration events — render in activity feed (metrics recorded backend-side)
+  def handle_info({:collab_event, payload}, socket) do
+    socket =
+      if team_id = socket.assigns[:team_id] do
+        score = Loomkin.Teams.CollaborationMetrics.collaboration_score(team_id)
+        assign(socket, collab_health: score)
+      else
+        socket
+      end
+
+    {:noreply, forward_to_activity(socket, {:collab_event, payload})}
+  end
+
   # Catch-all for unhandled PubSub messages (team events, etc.)
   def handle_info(_msg, socket) do
     {:noreply, socket}
@@ -1480,6 +1495,10 @@ defmodule LoomkinWeb.WorkspaceLive do
         >
           {team_sub_tab_label(sub)}
         </button>
+        <span :if={@collab_health} class="ml-auto flex items-center gap-1 text-xs" title={"Collaboration health: #{@collab_health}/100"}>
+          <span class={"inline-block w-2 h-2 rounded-full " <> collab_health_color(@collab_health)} />
+          <span class="text-gray-500">{@collab_health}</span>
+        </span>
       </div>
 
       <%!-- Activity feed: always mounted, hidden when not selected --%>
@@ -1504,6 +1523,10 @@ defmodule LoomkinWeb.WorkspaceLive do
   defp team_sub_tab_label(:activity), do: "Activity"
   defp team_sub_tab_label(:cost), do: "Cost"
   defp team_sub_tab_label(:graph), do: "Graph"
+
+  defp collab_health_color(score) when score >= 70, do: "bg-green-400"
+  defp collab_health_color(score) when score >= 40, do: "bg-yellow-400"
+  defp collab_health_color(_score), do: "bg-red-400"
 
   defp render_team_sub_tab(:cost, assigns) do
     ~H"""
@@ -1890,6 +1913,33 @@ defmodule LoomkinWeb.WorkspaceLive do
       timestamp: DateTime.utc_now(),
       expanded: false,
       metadata: %{}
+    }
+  end
+
+  defp activity_event_from({:collab_event, payload}) do
+    # Map collab event type to an activity event type for styling
+    event_type =
+      case payload.type do
+        :conflict_detected -> :error
+        :consensus_reached -> :decision
+        :task_rebalanced -> :task_assigned
+        _ -> :message
+      end
+
+    agent =
+      case payload.agents do
+        [first | _] -> first
+        _ -> "system"
+      end
+
+    %{
+      id: Ecto.UUID.generate(),
+      type: event_type,
+      agent: agent,
+      content: payload.description,
+      timestamp: payload.timestamp,
+      expanded: false,
+      metadata: Map.put(payload.metadata || %{}, :collab_type, payload.type)
     }
   end
 

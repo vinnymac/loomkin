@@ -4,7 +4,7 @@ defmodule Loomkin.Teams.Tasks do
   import Ecto.Query
   alias Loomkin.Repo
   alias Loomkin.Schemas.{TeamTask, TeamTaskDep}
-  alias Loomkin.Teams.{Comms, Context, CostTracker, Learning}
+  alias Loomkin.Teams.{Capabilities, Comms, Context, CostTracker, Learning}
 
   def create_task(team_id, attrs) do
     %TeamTask{}
@@ -54,6 +54,7 @@ defmodule Loomkin.Teams.Tasks do
 
         Comms.broadcast_task_event(task.team_id, {:task_completed, task.id, task.owner, result})
         Context.cache_task(task.team_id, task.id, %{title: task.title, status: :completed, owner: task.owner})
+        record_capability(task, :success)
         record_learning_metric(task, true)
         auto_schedule_unblocked(task.team_id)
       end)
@@ -72,6 +73,7 @@ defmodule Loomkin.Teams.Tasks do
       |> tap_ok(fn task ->
         Comms.broadcast_task_event(task.team_id, {:task_failed, task.id, task.owner, reason})
         Context.cache_task(task.team_id, task.id, %{title: task.title, status: :failed, owner: task.owner})
+        record_capability(task, :failure)
         record_learning_metric(task, false)
       end)
     end
@@ -119,6 +121,68 @@ defmodule Loomkin.Teams.Tasks do
     end
   end
 
+  @doc """
+  Smart-assign a task to the best available agent based on capabilities and load.
+
+  Returns `{:ok, task, reasoning}` or `{:error, reason}`.
+  """
+  def smart_assign(team_id, task_id) do
+    with {:ok, task} <- get_task(task_id),
+         {:ok, agent_name, reason} <- pick_best_agent(team_id, task) do
+      case assign_task(task_id, agent_name) do
+        {:ok, task} ->
+          Comms.broadcast(team_id, {:smart_assigned, task.id, agent_name, reason})
+          {:ok, task, reason}
+
+        error ->
+          error
+      end
+    end
+  end
+
+  defp pick_best_agent(team_id, task) do
+    agents = Context.list_agents(team_id)
+    idle_agents = Enum.filter(agents, fn a -> a.status == :idle end)
+
+    if idle_agents == [] do
+      {:error, :no_idle_agents}
+    else
+      task_type = Capabilities.infer_task_type(task.title)
+      ranked = Capabilities.best_agent_for(team_id, task_type)
+      idle_names = MapSet.new(idle_agents, & &1.name)
+
+      # Find best ranked agent that is idle
+      best_capable =
+        Enum.find(ranked, fn entry -> MapSet.member?(idle_names, entry.agent) end)
+
+      case best_capable do
+        %{agent: name, score: score} when score > 0 ->
+          {:ok, name, "Best at #{task_type} (score: #{Float.round(score, 2)})"}
+
+        _ ->
+          # Fall back to least-loaded idle agent
+          agent_loads = agent_load_counts(team_id)
+
+          least_loaded =
+            idle_agents
+            |> Enum.min_by(fn a -> Map.get(agent_loads, a.name, 0) end)
+
+          load = Map.get(agent_loads, least_loaded.name, 0)
+          {:ok, least_loaded.name, "Least loaded idle agent (#{load} active tasks)"}
+      end
+    end
+  end
+
+  defp agent_load_counts(team_id) do
+    Repo.all(
+      from t in TeamTask,
+        where: t.team_id == ^team_id and t.status in [:assigned, :in_progress],
+        group_by: t.owner,
+        select: {t.owner, count(t.id)}
+    )
+    |> Enum.into(%{})
+  end
+
   # -- Private --
 
   defp get_task!(task_id) do
@@ -158,6 +222,15 @@ defmodule Loomkin.Teams.Tasks do
         cost_usd: usage.cost || 0.0,
         tokens_used: (usage[:input_tokens] || 0) + (usage[:output_tokens] || 0)
       })
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp record_capability(task, outcome) do
+    if task.owner do
+      task_type = Capabilities.infer_task_type(task.title)
+      Capabilities.record_completion(task.team_id, task.owner, task_type, outcome)
     end
   rescue
     _ -> :ok

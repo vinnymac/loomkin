@@ -2,7 +2,7 @@ defmodule Loomkin.Teams.Manager do
   @moduledoc "Public API for team lifecycle management."
 
   alias Loomkin.Decisions.{AutoLogger, Broadcaster}
-  alias Loomkin.Teams.{Comms, Distributed, TableRegistry}
+  alias Loomkin.Teams.{Comms, ConflictDetector, Distributed, Rebalancer, TableRegistry}
 
   require Logger
 
@@ -293,6 +293,8 @@ defmodule Loomkin.Teams.Manager do
       try do
         Distributed.start_child({AutoLogger, team_id: team_id})
         Distributed.start_child({Broadcaster, team_id: team_id})
+        Distributed.start_child({Rebalancer, team_id: team_id})
+        Distributed.start_child({ConflictDetector, team_id: team_id})
       catch
         :exit, _ -> :ok
       end
@@ -300,7 +302,7 @@ defmodule Loomkin.Teams.Manager do
   end
 
   defp stop_nervous_system(team_id) do
-    for key <- [{:auto_logger, team_id}, {:broadcaster, team_id}] do
+    for key <- [{:auto_logger, team_id}, {:broadcaster, team_id}, {:rebalancer, team_id}, {:conflict_detector, team_id}] do
       case Registry.lookup(Loomkin.Teams.AgentRegistry, key) do
         [{pid, _}] -> Distributed.terminate_child(pid)
         [] -> :ok

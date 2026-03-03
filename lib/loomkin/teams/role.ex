@@ -70,6 +70,7 @@ defmodule Loomkin.Teams.Role do
   @lead_tools [
     Loomkin.Tools.TeamSpawn,
     Loomkin.Tools.TeamAssign,
+    Loomkin.Tools.TeamSmartAssign,
     Loomkin.Tools.TeamProgress,
     Loomkin.Tools.TeamDissolve
   ]
@@ -104,6 +105,7 @@ defmodule Loomkin.Teams.Role do
     "lsp_diagnostics" => Loomkin.Tools.LspDiagnostics,
     "team_spawn" => Loomkin.Tools.TeamSpawn,
     "team_assign" => Loomkin.Tools.TeamAssign,
+    "team_smart_assign" => Loomkin.Tools.TeamSmartAssign,
     "team_progress" => Loomkin.Tools.TeamProgress,
     "team_dissolve" => Loomkin.Tools.TeamDissolve,
     "peer_message" => Loomkin.Tools.PeerMessage,

@@ -139,12 +139,20 @@ defmodule Loomkin.Decisions.Graph do
     list_nodes(node_type: :goal, status: :active)
   end
 
-  def recent_decisions(limit \\ 10) do
-    DecisionNode
-    |> where([n], n.node_type in [:decision, :option])
-    |> order_by([n], desc: n.inserted_at)
-    |> limit(^limit)
-    |> Repo.all()
+  def recent_decisions(limit \\ 10, opts \\ []) do
+    query =
+      DecisionNode
+      |> where([n], n.node_type in [:decision, :option])
+      |> order_by([n], desc: n.inserted_at)
+      |> limit(^limit)
+
+    query =
+      case Keyword.get(opts, :team_id) do
+        nil -> query
+        team_id -> where(query, [n], fragment("json_extract(?, '$.team_id') = ?", n.metadata, ^team_id))
+      end
+
+    Repo.all(query)
   end
 
   def supersede(old_node_id, new_node_id, rationale) do

@@ -35,13 +35,60 @@ defmodule Loomkin.Teams.Comms do
     Phoenix.PubSub.broadcast(@pubsub, "team:#{team_id}", message)
   end
 
-  @doc "Share a discovery via the context topic."
-  def broadcast_context(team_id, %{from: from} = payload) do
+  @doc """
+  Share a discovery via the context topic.
+
+  ## Options
+
+    * `:propagate_up` - if true, also broadcast to parent team for `:insight` and
+      `:blocker` type discoveries. Defaults to `true`.
+
+  """
+  def broadcast_context(team_id, %{from: from} = payload, opts \\ []) do
     Phoenix.PubSub.broadcast(
       @pubsub,
       "team:#{team_id}:context",
       {:context_update, from, payload}
     )
+
+    propagate_up = Keyword.get(opts, :propagate_up, true)
+
+    if propagate_up do
+      maybe_propagate_to_parent(team_id, payload)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Broadcast a discovery only to agents whose relevance score exceeds the threshold.
+
+  Falls back to full broadcast if no agents are registered or scoring fails.
+  """
+  def broadcast_context_targeted(team_id, %{from: from} = payload, threshold \\ 0.3) do
+    alias Loomkin.Teams.{Context, RelevanceScorer}
+
+    agents = Context.list_agents(team_id)
+
+    if agents == [] do
+      # No agents registered — fall back to topic broadcast
+      broadcast_context(team_id, payload)
+    else
+      relevant =
+        agents
+        |> Enum.reject(fn agent -> to_string(agent.name) == to_string(from) end)
+        |> RelevanceScorer.filter_relevant(payload, threshold)
+
+      if relevant == [] do
+        # No relevant agents found — still broadcast on topic so it's not lost
+        broadcast_context(team_id, payload)
+      else
+        # Send targeted messages to relevant agents only
+        Enum.each(relevant, fn {agent, _score} ->
+          send_to(team_id, agent.name, {:context_update, from, payload})
+        end)
+      end
+    end
   end
 
   @doc "Broadcast a task event (assigned, completed, etc)."
@@ -59,6 +106,28 @@ defmodule Loomkin.Teams.Comms do
   end
 
   # -- Private --
+
+  @propagatable_types ~w[insight blocker]
+
+  defp maybe_propagate_to_parent(team_id, %{from: from} = payload) do
+    type = to_string(payload[:type] || "")
+
+    if type in @propagatable_types do
+      case Loomkin.Teams.Manager.get_parent_team(team_id) do
+        {:ok, parent_team_id} ->
+          propagated = Map.put(payload, :source_team, team_id)
+
+          Phoenix.PubSub.broadcast(
+            @pubsub,
+            "team:#{parent_team_id}:context",
+            {:context_update, from, propagated}
+          )
+
+        :none ->
+          :ok
+      end
+    end
+  end
 
   defp topics(team_id, agent_name) do
     [

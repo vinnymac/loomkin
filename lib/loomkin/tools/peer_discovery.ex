@@ -27,7 +27,7 @@ defmodule Loomkin.Tools.PeerDiscovery do
       {:ok, _ref} ->
         discovery = %{from: from, type: type_str, content: content}
         Context.add_discovery(team_id, discovery)
-        Comms.broadcast_context(team_id, discovery)
+        Comms.broadcast_context_targeted(team_id, discovery)
 
         {:ok, %{result: "Discovery broadcast to team: #{String.slice(content, 0, 80)}"}}
 

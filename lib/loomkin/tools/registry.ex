@@ -22,6 +22,7 @@ defmodule Loomkin.Tools.Registry do
     Loomkin.Tools.PeerAskQuestion,
     Loomkin.Tools.PeerAnswerQuestion,
     Loomkin.Tools.PeerForwardQuestion,
+    Loomkin.Tools.CollectiveDecision,
     Loomkin.Tools.AskUser
   ]
 

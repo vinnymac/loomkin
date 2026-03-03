@@ -280,7 +280,6 @@ defmodule LoomkinWeb.TeamActivityComponent do
       <div :if={!@has_result && String.length(@event.content) > 0} class="px-2.5 pb-1.5">
         <p class="text-xs text-gray-400 break-words">{@event.content}</p>
       </div>
-      {reply_button(assign(assigns, :agent, @event.agent))}
     </div>
     """
   end
@@ -345,7 +344,6 @@ defmodule LoomkinWeb.TeamActivityComponent do
           show less
         </button>
       </div>
-      {reply_button(assign(assigns, :agent, @from))}
     </div>
     """
   end
@@ -419,7 +417,6 @@ defmodule LoomkinWeb.TeamActivityComponent do
           </button>
         </div>
       </div>
-      {reply_button(assign(assigns, :agent, @event.agent))}
     </div>
     """
   end
@@ -470,7 +467,6 @@ defmodule LoomkinWeb.TeamActivityComponent do
           show more
         </button>
       </div>
-      {reply_button(assign(assigns, :agent, @event.agent))}
     </div>
     """
   end
@@ -568,7 +564,6 @@ defmodule LoomkinWeb.TeamActivityComponent do
           </button>
         </div>
       </div>
-      {reply_button(assign(assigns, :agent, @event.agent))}
     </div>
     """
   end
@@ -645,7 +640,6 @@ defmodule LoomkinWeb.TeamActivityComponent do
           {relative_time(@event.timestamp)}
         </span>
       </div>
-      {reply_button(assign(assigns, :agent, @event.agent))}
     </div>
     """
   end
@@ -682,7 +676,6 @@ defmodule LoomkinWeb.TeamActivityComponent do
       <div class="px-2.5 pb-1.5">
         <p class="text-sm text-sky-200/80 leading-snug whitespace-pre-wrap break-words">{@event.content}</p>
       </div>
-      {reply_button(assign(assigns, :agent, @from))}
     </div>
     """
   end
@@ -723,7 +716,6 @@ defmodule LoomkinWeb.TeamActivityComponent do
       <div class="px-2.5 pb-1.5">
         <p class="text-sm text-gray-300 leading-snug whitespace-pre-wrap break-words">{@event.content}</p>
       </div>
-      {reply_button(assign(assigns, :agent, @from))}
     </div>
     """
   end
@@ -757,7 +749,6 @@ defmodule LoomkinWeb.TeamActivityComponent do
       <div class="px-2.5 pb-1.5">
         <p class="text-sm text-gray-300 leading-snug whitespace-pre-wrap break-words">{@event.content}</p>
       </div>
-      {reply_button(assign(assigns, :agent, @event.agent))}
     </div>
     """
   end
@@ -806,29 +797,11 @@ defmodule LoomkinWeb.TeamActivityComponent do
           show more
         </button>
       </div>
-      {reply_button(assign(assigns, :agent, @event.agent))}
     </div>
     """
   end
 
   # --- Helpers ---
-
-  defp reply_button(assigns) do
-    ~H"""
-    <button
-      :if={@agent != "You" && @agent != "system"}
-      phx-click="reply_to_agent"
-      phx-value-agent={@agent}
-      class="flex items-center gap-1 text-xs text-gray-500/60 hover:text-emerald-400 transition px-2.5 pb-1"
-      title={"Reply to #{@agent}"}
-    >
-      <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 015 5v4M3 10l5 5M3 10l5-5" />
-      </svg>
-      Reply
-    </button>
-    """
-  end
 
   defp filtered_events(assigns) do
     events = assigns.events

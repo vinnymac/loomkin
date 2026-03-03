@@ -483,6 +483,11 @@ defmodule Loomkin.AgentLoop do
     tool_call_id = pending_info.pending_data.tool_call_id
     tool_name = pending_info.pending_data.tool_name
 
+    # Restore read-file tracker from pending context (may have been lost across process boundary)
+    if read_files = get_in(pending_info, [:pending_data, :context, :read_files]) do
+      Process.put(:loomkin_read_files, read_files)
+    end
+
     # Record the tool result
     messages = record_tool_result(messages, config, tool_name, tool_call_id, tool_result_text)
 
@@ -514,11 +519,15 @@ defmodule Loomkin.AgentLoop do
       file_path = tool_args["file_path"] || tool_args[:file_path]
 
       if file_path && project_path do
-        full_path = Path.expand(file_path, project_path)
+        # Use safe_path! to canonicalize (resolve symlinks) — matches file_edit's path form
+        full_path = Loomkin.Tool.safe_path!(file_path, project_path)
         read_files = Process.get(:loomkin_read_files, MapSet.new())
         Process.put(:loomkin_read_files, MapSet.put(read_files, full_path))
       end
     end
+  rescue
+    # safe_path! raises on paths outside the project — skip tracking
+    ArgumentError -> :ok
   end
 
   defp maybe_track_read_file(_tool_name, _tool_args, _project_path, _result_text), do: :ok

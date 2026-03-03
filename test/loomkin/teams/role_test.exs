@@ -138,10 +138,10 @@ defmodule Loomkin.Teams.RoleTest do
       end
     end
 
-    test "lead prompt mentions decompose and coordinate" do
+    test "lead prompt mentions decomposition and coordination" do
       {:ok, lead} = Role.get(:lead)
-      assert lead.system_prompt =~ "decompose"
-      assert lead.system_prompt =~ "coordinate"
+      assert lead.system_prompt =~ "decomposition"
+      assert lead.system_prompt =~ "coordination"
     end
 
     test "researcher prompt mentions explore and read-only" do
@@ -150,10 +150,10 @@ defmodule Loomkin.Teams.RoleTest do
       assert researcher.system_prompt =~ "read-only"
     end
 
-    test "coder prompt mentions implement and conventions" do
+    test "coder prompt mentions implement and code style" do
       {:ok, coder} = Role.get(:coder)
       assert coder.system_prompt =~ "implement"
-      assert coder.system_prompt =~ "conventions"
+      assert coder.system_prompt =~ "code style"
     end
 
     test "reviewer prompt mentions review and security" do

@@ -2,14 +2,14 @@ defmodule LoomkinWeb.ContextInspectorComponent do
   @moduledoc """
   Right-panel context inspector for Mission Control mode.
 
-  Hosts existing components (FileTree, Diff, Terminal, Graph, Chat) in a tabbed
+  Hosts existing components (FileTree, Diff, Terminal, Graph) in a tabbed
   layout with auto-follow and pin modes. Delegates all rendering to the child
   components — does not rebuild any of them.
   """
 
   use LoomkinWeb, :live_component
 
-  @tabs [:files, :diff, :terminal, :graph, :chat]
+  @tabs [:files, :diff, :terminal, :graph]
 
   @impl true
   def mount(socket) do
@@ -207,23 +207,6 @@ defmodule LoomkinWeb.ContextInspectorComponent do
     """
   end
 
-  defp render_inspector_tab(:chat, assigns) do
-    ~H"""
-    <.live_component
-      module={LoomkinWeb.ChatComponent}
-      id="inspector-chat"
-      messages={@messages}
-      status={@status}
-      current_tool={@current_tool}
-      streaming={@streaming}
-      streaming_content={@streaming_content}
-      architect_phase={@architect_phase}
-      plan_steps={@plan_steps}
-      current_step={@current_step}
-    />
-    """
-  end
-
   # --- Styling helpers ---
 
   defp panel_class(true = _collapsed),
@@ -267,12 +250,8 @@ defmodule LoomkinWeb.ContextInspectorComponent do
   defp tab_icon(:graph),
     do: raw("<span class=\"hero-share-mini inline-block w-3.5 h-3.5\"></span>")
 
-  defp tab_icon(:chat),
-    do: raw("<span class=\"hero-chat-bubble-left-right-mini inline-block w-3.5 h-3.5\"></span>")
-
   defp tab_label(:files), do: "Files"
   defp tab_label(:diff), do: "Diff"
   defp tab_label(:terminal), do: "Terminal"
   defp tab_label(:graph), do: "Graph"
-  defp tab_label(:chat), do: "Chat"
 end

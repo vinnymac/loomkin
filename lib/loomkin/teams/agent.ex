@@ -191,7 +191,15 @@ defmodule Loomkin.Teams.Agent do
         task_id = state.task && state.task[:id]
         if original_from, do: GenServer.reply(original_from, {:error, :cancelled})
         if !original_from && task_id, do: Loomkin.Teams.Tasks.fail_task(task_id, "cancelled")
-        state = %{state | loop_task: nil, pending_updates: [], priority_queue: []}
+        state = %{state | loop_task: nil, pending_permission: nil, pending_updates: [], priority_queue: []}
+        state = set_status(state, :idle)
+        broadcast_team(state, {:agent_status, state.name, :idle})
+        {:reply, :ok, state}
+
+      nil when state.pending_permission != nil ->
+        # Agent is waiting on permission — clear it and go idle
+        Logger.info("[Agent:#{state.name}] Cancelling pending permission")
+        state = %{state | pending_permission: nil, pending_updates: [], priority_queue: []}
         state = set_status(state, :idle)
         broadcast_team(state, {:agent_status, state.name, :idle})
         {:reply, :ok, state}

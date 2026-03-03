@@ -234,6 +234,19 @@ defmodule Loomkin.Teams.Manager do
     end)
   end
 
+  @doc "List all agents in a team and its sub-teams recursively."
+  @spec list_all_agents(String.t()) :: [map()]
+  def list_all_agents(team_id) do
+    own = list_agents(team_id)
+
+    sub =
+      for sub_id <- list_sub_teams(team_id),
+          agent <- list_all_agents(sub_id),
+          do: agent
+
+    own ++ sub
+  end
+
   @doc "Find an agent by team and name."
   def find_agent(team_id, name) do
     case Registry.lookup(Loomkin.Teams.AgentRegistry, {team_id, name}) do

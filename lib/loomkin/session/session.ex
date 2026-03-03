@@ -102,6 +102,19 @@ defmodule Loomkin.Session do
     end
   end
 
+  @doc "Update the project path for a running session."
+  @spec update_project_path(pid() | String.t(), String.t()) :: :ok | {:error, term()}
+  def update_project_path(pid, path) when is_pid(pid) do
+    GenServer.call(pid, {:update_project_path, path})
+  end
+
+  def update_project_path(session_id, path) when is_binary(session_id) do
+    case Loomkin.Session.Manager.find_session(session_id) do
+      {:ok, pid} -> update_project_path(pid, path)
+      :error -> {:error, :not_found}
+    end
+  end
+
   @doc "Send a permission response to the session."
   def permission_response(session_id, action, tool_name, tool_path) when is_binary(session_id) do
     case Loomkin.Session.Manager.find_session(session_id) do
@@ -184,6 +197,12 @@ defmodule Loomkin.Session do
   @impl true
   def handle_call(:get_team_id, _from, state) do
     {:reply, Map.get(state, :team_id), state}
+  end
+
+  @impl true
+  def handle_call({:update_project_path, path}, _from, state) do
+    Logger.debug("[Session] Updated project_path to #{path}")
+    {:reply, :ok, %{state | project_path: path}}
   end
 
   @impl true

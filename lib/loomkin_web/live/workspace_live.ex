@@ -333,7 +333,8 @@ defmodule LoomkinWeb.WorkspaceLive do
   end
 
   def handle_event("keyboard_shortcut", %{"key" => "focus_panel_5"}, socket) do
-    {:noreply, assign(socket, active_inspector_tab: :chat, inspector_mode: :pinned)}
+    # Chat tab removed from inspector — ignore shortcut
+    {:noreply, socket}
   end
 
   def handle_event("keyboard_shortcut", %{"key" => "jump_active_agent"}, socket) do
@@ -373,7 +374,7 @@ defmodule LoomkinWeb.WorkspaceLive do
      )}
   end
 
-  @palette_valid_tabs ~w(files diff terminal graph chat)
+  @palette_valid_tabs ~w(files diff terminal graph)
   def handle_event("palette_select", %{"type" => "tab", "value" => tab}, socket)
       when tab in @palette_valid_tabs do
     {:noreply,
@@ -684,7 +685,8 @@ defmodule LoomkinWeb.WorkspaceLive do
       {:noreply, put_flash(socket, :error, "Directory not found: #{path}")}
     else
       team_id = socket.assigns[:team_id]
-      agents = if team_id, do: Teams.Manager.list_agents(team_id), else: []
+      # Include sub-team agents so we don't skip confirmation while child agents are running
+      agents = if team_id, do: Teams.Manager.list_all_agents(team_id), else: []
       active = Enum.filter(agents, fn a -> a.status not in [:idle] end)
 
       if active == [] do
@@ -1277,6 +1279,15 @@ defmodule LoomkinWeb.WorkspaceLive do
         plan_steps={@plan_steps}
         current_step={@current_step}
       />
+
+      <%!-- Pending ask_user questions (also shown in solo mode) --%>
+      <div :if={@pending_questions != []} class="border-t border-violet-500/20 bg-gray-900/90 px-3 py-2">
+        <.live_component
+          module={LoomkinWeb.AskUserComponent}
+          id="ask-user-questions-solo"
+          questions={@pending_questions}
+        />
+      </div>
 
       {render_input_bar(assigns)}
     </div>
@@ -2235,6 +2246,9 @@ defmodule LoomkinWeb.WorkspaceLive do
       Teams.Manager.update_project_path(team_id, path)
     end
 
+    # Update the Session GenServer so the Architect uses the new path
+    Session.update_project_path(socket.assigns.session_id, path)
+
     # Track in recent projects (dedup, max 5)
     recent =
       [socket.assigns.project_path | socket.assigns.recent_projects]
@@ -2414,7 +2428,7 @@ defmodule LoomkinWeb.WorkspaceLive do
       end)
 
     tabs =
-      Enum.map([:files, :diff, :terminal, :graph, :chat], fn tab ->
+      Enum.map([:files, :diff, :terminal, :graph], fn tab ->
         %{type: :tab, label: Atom.to_string(tab), detail: "Inspector Tab", value: Atom.to_string(tab)}
       end)
 

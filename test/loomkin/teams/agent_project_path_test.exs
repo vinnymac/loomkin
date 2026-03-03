@@ -101,6 +101,45 @@ defmodule Loomkin.Teams.AgentProjectPathTest do
     end
   end
 
+  describe "cancel clears pending_permission" do
+    test "cancels agent that is waiting on permission" do
+      team_id = create_team(project_path: "/tmp/test")
+      %{pid: pid} = start_agent_in_team(team_id)
+
+      # Simulate pending permission state (no loop_task, but pending_permission set)
+      :sys.replace_state(pid, fn state ->
+        %{state | pending_permission: %{some: :data}, status: :waiting_permission}
+      end)
+
+      state = :sys.get_state(pid)
+      assert state.pending_permission != nil
+
+      assert :ok = GenServer.call(pid, :cancel)
+
+      state = :sys.get_state(pid)
+      assert state.pending_permission == nil
+      assert state.status == :idle
+    end
+  end
+
+  describe "Manager.list_all_agents/1" do
+    test "includes agents from sub-teams" do
+      parent_id = create_team(project_path: "/tmp/test")
+      {:ok, child_id} = Manager.create_sub_team(parent_id, "test", name: "child-team", project_path: "/tmp/test")
+
+      start_agent_in_team(parent_id, name: "parent-agent")
+      start_agent_in_team(child_id, name: "child-agent")
+
+      parent_only = Manager.list_agents(parent_id)
+      assert length(parent_only) == 1
+
+      all = Manager.list_all_agents(parent_id)
+      assert length(all) == 2
+      names = Enum.map(all, & &1.name) |> Enum.sort()
+      assert names == ["child-agent", "parent-agent"]
+    end
+  end
+
   describe "AgentLoop.current_project_path/1" do
     test "returns static path when no resolver is provided" do
       config = %{project_path: "/static/path", project_path_resolver: nil}

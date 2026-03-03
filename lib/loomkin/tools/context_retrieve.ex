@@ -11,7 +11,12 @@ defmodule Loomkin.Tools.ContextRetrieve do
       team_id: [type: :string, required: true, doc: "Team ID"],
       query: [type: :string, required: true, doc: "The question or search term"],
       keeper_id: [type: :string, doc: "Specific keeper ID to query (omit to search all)"],
-      mode: [type: :string, doc: "Retrieval mode: smart | raw (auto-detected if omitted)"]
+      mode: [
+        type: :string,
+        doc:
+          "Retrieval mode: smart | raw | synthesize (auto-detected if omitted). " <>
+            "Use synthesize to combine context from multiple keepers into a unified answer."
+      ]
     ]
 
   import Loomkin.Tool, only: [param!: 2, param: 2]
@@ -27,25 +32,36 @@ defmodule Loomkin.Tools.ContextRetrieve do
     keeper_id = param(params, :keeper_id)
     mode = param(params, :mode)
 
-    opts = []
-    opts = if keeper_id, do: Keyword.put(opts, :keeper_id, keeper_id), else: opts
-    opts =
-      case mode do
-        "smart" -> Keyword.put(opts, :mode, :smart)
-        "raw" -> Keyword.put(opts, :mode, :raw)
-        _ -> opts
+    if mode == "synthesize" do
+      case ContextRetrieval.synthesize(team_id, query) do
+        {:ok, result} ->
+          {:ok, %{result: truncate(result, @max_result_chars)}}
+
+        {:error, :not_found} ->
+          {:ok, %{result: "No relevant context found for: #{String.slice(query, 0, 80)}"}}
       end
+    else
+      opts = []
+      opts = if keeper_id, do: Keyword.put(opts, :keeper_id, keeper_id), else: opts
 
-    case ContextRetrieval.retrieve(team_id, query, opts) do
-      {:ok, result} when is_binary(result) ->
-        {:ok, %{result: truncate(result, @max_result_chars)}}
+      opts =
+        case mode do
+          "smart" -> Keyword.put(opts, :mode, :smart)
+          "raw" -> Keyword.put(opts, :mode, :raw)
+          _ -> opts
+        end
 
-      {:ok, messages} when is_list(messages) ->
-        formatted = format_messages(messages)
-        {:ok, %{result: truncate(formatted, @max_result_chars)}}
+      case ContextRetrieval.retrieve(team_id, query, opts) do
+        {:ok, result} when is_binary(result) ->
+          {:ok, %{result: truncate(result, @max_result_chars)}}
 
-      {:error, :not_found} ->
-        {:ok, %{result: "No relevant context found for: #{String.slice(query, 0, 80)}"}}
+        {:ok, messages} when is_list(messages) ->
+          formatted = format_messages(messages)
+          {:ok, %{result: truncate(formatted, @max_result_chars)}}
+
+        {:error, :not_found} ->
+          {:ok, %{result: "No relevant context found for: #{String.slice(query, 0, 80)}"}}
+      end
     end
   end
 

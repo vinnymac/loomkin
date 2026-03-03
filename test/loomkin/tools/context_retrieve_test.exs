@@ -120,5 +120,30 @@ defmodule Loomkin.Tools.ContextRetrieveTest do
       assert {:ok, %{result: result}} = ContextRetrieve.run(params, context())
       assert result =~ "string key content"
     end
+
+    test "synthesize mode returns combined answer from multiple keepers", %{team_id: team_id} do
+      spawn_keeper(team_id,
+        topic: "auth implementation",
+        source_agent: "researcher",
+        messages: [%{role: :user, content: "We use JWT tokens for auth"}]
+      )
+
+      spawn_keeper(team_id,
+        topic: "auth testing",
+        source_agent: "tester",
+        messages: [%{role: :user, content: "Auth tests cover login and logout"}]
+      )
+
+      params = %{team_id: team_id, query: "auth", mode: "synthesize"}
+      assert {:ok, %{result: result}} = ContextRetrieve.run(params, context())
+      assert is_binary(result)
+      assert String.length(result) > 0
+    end
+
+    test "synthesize mode returns not-found message when no keepers match", %{team_id: team_id} do
+      params = %{team_id: team_id, query: "nonexistent", mode: "synthesize"}
+      assert {:ok, %{result: result}} = ContextRetrieve.run(params, context())
+      assert result =~ "No relevant context found"
+    end
   end
 end

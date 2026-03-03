@@ -36,6 +36,14 @@ defmodule Loomkin.Teams.ContextKeeper do
 
   # --- Public API ---
 
+  def child_spec(opts) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [opts]},
+      restart: :transient
+    }
+  end
+
   def start_link(opts) do
     id = Keyword.fetch!(opts, :id)
     team_id = Keyword.fetch!(opts, :team_id)

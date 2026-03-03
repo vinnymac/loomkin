@@ -63,6 +63,7 @@ defmodule Loomkin.Teams.Role do
     Loomkin.Tools.PeerForwardQuestion,
     Loomkin.Tools.PeerChangeRole,
     Loomkin.Tools.ContextRetrieve,
+    Loomkin.Tools.SearchKeepers,
     Loomkin.Tools.ContextOffload,
     Loomkin.Tools.AskUser
   ]
@@ -119,6 +120,7 @@ defmodule Loomkin.Teams.Role do
     "peer_forward_question" => Loomkin.Tools.PeerForwardQuestion,
     "peer_change_role" => Loomkin.Tools.PeerChangeRole,
     "context_retrieve" => Loomkin.Tools.ContextRetrieve,
+    "search_keepers" => Loomkin.Tools.SearchKeepers,
     "context_offload" => Loomkin.Tools.ContextOffload,
     "ask_user" => Loomkin.Tools.AskUser
   }

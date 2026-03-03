@@ -158,6 +158,57 @@ defmodule Loomkin.Session.ContextWindowTest do
     end
   end
 
+  describe "select_recent priority retention" do
+    test "high priority messages are always retained even when budget is tight" do
+      # Create a mix of normal and high-priority messages
+      long_content = String.duplicate("x", 400)
+
+      messages = [
+        %{role: :user, content: long_content},
+        %{role: :system, content: "[Context offloaded] keeper:abc", priority: :high},
+        %{role: :assistant, content: long_content},
+        %{role: :system, content: "[Context offloaded] keeper:def", priority: :high},
+        %{role: :user, content: "latest question"}
+      ]
+
+      # Use a very tight budget via build_messages so only a few messages fit
+      result =
+        ContextWindow.build_messages(messages, "sys",
+          max_tokens: 200,
+          reserved_output: 10
+        )
+
+      # System prompt is always first
+      assert hd(result).role == :system
+
+      # High priority markers should survive trimming
+      contents = Enum.map(result, & &1.content)
+      assert Enum.any?(contents, &(&1 =~ "keeper:abc"))
+      assert Enum.any?(contents, &(&1 =~ "keeper:def"))
+    end
+
+    test "normal messages without priority are evicted first" do
+      long = String.duplicate("y", 1000)
+
+      messages = [
+        %{role: :user, content: long},
+        %{role: :assistant, content: long},
+        %{role: :system, content: "important breadcrumb", priority: :high},
+        %{role: :user, content: "recent"}
+      ]
+
+      result =
+        ContextWindow.build_messages(messages, "sys",
+          max_tokens: 400,
+          reserved_output: 10
+        )
+
+      contents = Enum.map(result, & &1.content)
+      # High priority breadcrumb should be present
+      assert Enum.any?(contents, &(&1 =~ "important breadcrumb"))
+    end
+  end
+
   describe "inject_decision_context/2" do
     test "returns parts unchanged when session_id is nil" do
       parts = ["System prompt"]

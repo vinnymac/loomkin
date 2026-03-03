@@ -84,7 +84,114 @@ defmodule Loomkin.Teams.ContextRetrieval do
     retrieve(team_id, question, Keyword.put(opts, :mode, :smart))
   end
 
+  @max_synthesis_chars 32_000
+  @max_keepers 5
+
+  @doc """
+  Synthesize context from multiple keepers into a unified answer.
+
+  Searches keepers by relevance, retrieves raw content from the top matches,
+  and sends the combined context to an LLM for synthesis.
+
+  Returns `{:ok, answer}` or `{:error, :not_found}`.
+  """
+  def synthesize(team_id, question) do
+    top_keepers =
+      search(team_id, question)
+      |> Enum.filter(&(&1.relevance > 0))
+      |> Enum.take(@max_keepers)
+
+    case top_keepers do
+      [] ->
+        {:error, :not_found}
+
+      keepers ->
+        sections =
+          retrieve_from_multiple(keepers, question)
+          |> Enum.reject(&(&1.content == ""))
+
+        case sections do
+          [] -> {:error, :not_found}
+          _ -> synthesize_with_llm(sections, question)
+        end
+    end
+  end
+
   # --- Private ---
+
+  defp retrieve_from_multiple(keepers, query) do
+    keepers
+    |> Enum.reduce_while({[], 0}, fn keeper, {acc, chars_used} ->
+      if chars_used >= @max_synthesis_chars do
+        {:halt, {acc, chars_used}}
+      else
+        budget = @max_synthesis_chars - chars_used
+
+        content =
+          case ContextKeeper.retrieve(keeper.pid, query) do
+            {:ok, messages} when is_list(messages) -> format_messages(messages)
+            {:ok, text} when is_binary(text) -> text
+            _ -> ""
+          end
+
+        trimmed = String.slice(content, 0, budget)
+        section = %{topic: keeper.topic, source: keeper.source_agent, content: trimmed}
+        {:cont, {[section | acc], chars_used + String.length(trimmed)}}
+      end
+    end)
+    |> elem(0)
+    |> Enum.reverse()
+  end
+
+  defp format_messages(messages) do
+    Enum.map_join(messages, "\n", fn msg ->
+      role = msg[:role] || msg["role"] || "unknown"
+      content = msg[:content] || msg["content"] || ""
+      "[#{role}]: #{content}"
+    end)
+  end
+
+  defp synthesize_with_llm(sections, question) do
+    model = Loomkin.Teams.ModelRouter.default_model()
+
+    keeper_context =
+      sections
+      |> Enum.with_index(1)
+      |> Enum.map_join("\n\n", fn {section, i} ->
+        "--- Keeper #{i} (#{section.topic}, from #{section.source}) ---\n#{section.content}"
+      end)
+
+    messages = [
+      ReqLLM.Context.system("""
+      You are synthesizing information from multiple context keepers. \
+      Provide a unified, coherent answer to the question. Use ONLY the \
+      provided context. Be specific and concise. If the context doesn't \
+      fully answer the question, say what is known and what is missing.\
+      """),
+      ReqLLM.Context.user("Question: #{question}\n\n#{keeper_context}")
+    ]
+
+    fallback = fn ->
+      Enum.map_join(sections, "\n\n", fn s -> "## #{s.topic}\n#{s.content}" end)
+    end
+
+    case call_llm(model, messages) do
+      {:ok, response} ->
+        case ReqLLM.Response.classify(response).text do
+          text when is_binary(text) and text != "" -> {:ok, text}
+          _ -> {:ok, fallback.()}
+        end
+
+      {:error, _reason} ->
+        {:ok, fallback.()}
+    end
+  end
+
+  defp call_llm(model, messages) do
+    ReqLLM.generate_text(model, messages, [])
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
 
   @question_starters ~w(what how why where when who which did does is are was were can could should would)
 

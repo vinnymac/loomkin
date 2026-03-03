@@ -295,19 +295,40 @@ defmodule Loomkin.Session.ContextWindow do
   end
 
   defp select_recent(messages, available_tokens) do
-    messages
-    |> Enum.reverse()
-    |> Enum.reduce_while({[], 0}, fn msg, {acc, used} ->
-      msg_tokens = estimate_message_tokens(msg)
+    indexed = Enum.with_index(messages)
 
-      if used + msg_tokens <= available_tokens do
-        {:cont, {[msg | acc], used + msg_tokens}}
-      else
-        {:halt, {acc, used}}
-      end
-    end)
-    |> elem(0)
+    {high_indexed, normal_indexed} = Enum.split_with(indexed, fn {msg, _i} -> high_priority?(msg) end)
+
+    high_tokens = high_indexed |> Enum.map(fn {msg, _} -> estimate_message_tokens(msg) end) |> Enum.sum()
+    remaining_budget = max(available_tokens - high_tokens, 0)
+
+    # Select normal messages newest-first within remaining budget
+    kept_normal_indices =
+      normal_indexed
+      |> Enum.reverse()
+      |> Enum.reduce_while({[], 0}, fn {msg, idx}, {acc, used} ->
+        msg_tokens = estimate_message_tokens(msg)
+
+        if used + msg_tokens <= remaining_budget do
+          {:cont, {[idx | acc], used + msg_tokens}}
+        else
+          {:halt, {acc, used}}
+        end
+      end)
+      |> elem(0)
+      |> MapSet.new()
+
+    high_indices = high_indexed |> Enum.map(fn {_, i} -> i end) |> MapSet.new()
+    selected_indices = MapSet.union(high_indices, kept_normal_indices)
+
+    # Return in original order
+    indexed
+    |> Enum.filter(fn {_msg, i} -> MapSet.member?(selected_indices, i) end)
+    |> Enum.map(fn {msg, _i} -> msg end)
   end
+
+  defp high_priority?(%{priority: :high}), do: true
+  defp high_priority?(_), do: false
 
   defp estimate_message_tokens(msg) do
     content_tokens = estimate_tokens(message_content(msg))

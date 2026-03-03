@@ -18,6 +18,7 @@ defmodule Loomkin.Tools.Registry do
 
   @peer_tools [
     Loomkin.Tools.ContextRetrieve,
+    Loomkin.Tools.SearchKeepers,
     Loomkin.Tools.ContextOffload,
     Loomkin.Tools.PeerAskQuestion,
     Loomkin.Tools.PeerAnswerQuestion,

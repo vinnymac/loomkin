@@ -24,7 +24,7 @@ defmodule Loomkin.Teams.ContextOffload do
       case offload_to_keeper(agent_state.team_id, agent_state.name, offload_msgs) do
         {:ok, _pid, index_entry} ->
           # Prepend index entry as a system note so agent knows context was saved
-          marker = %{role: :system, content: "[Context offloaded] #{index_entry}"}
+          marker = %{role: :system, content: "[Context offloaded] #{index_entry}", priority: :high}
           {:offloaded, [marker | keep_msgs], index_entry}
 
         {:error, _reason} ->
@@ -63,7 +63,7 @@ defmodule Loomkin.Teams.ContextOffload do
   Returns `{:ok, keeper_pid, index_entry}` or `{:error, reason}`.
   """
   def offload_to_keeper(team_id, agent_name, messages, opts \\ []) do
-    topic = Keyword.get(opts, :topic, infer_topic(messages))
+    topic = Keyword.get(opts, :topic, generate_topic(messages))
     metadata = Keyword.get(opts, :metadata, %{})
 
     case Manager.spawn_keeper(team_id,
@@ -102,6 +102,49 @@ defmodule Loomkin.Teams.ContextOffload do
 
   def estimate_tokens(_), do: 0
 
+  @doc """
+  Generate a semantic topic for offloaded messages using an LLM call.
+
+  Sends a small prompt asking for a 3-5 word summary. Falls back to
+  the heuristic `infer_topic/1` on any failure.
+  """
+  def generate_topic(messages) do
+    content =
+      messages
+      |> Enum.map(&message_content/1)
+      |> Enum.join("\n")
+      |> String.slice(0, 2000)
+
+    if String.trim(content) == "" do
+      infer_topic(messages)
+    else
+      model = Loomkin.Teams.ModelRouter.default_model()
+
+      llm_messages = [
+        ReqLLM.Context.system("Summarize the main topic of the following conversation in 3-5 words. Reply with ONLY the topic, nothing else."),
+        ReqLLM.Context.user(content)
+      ]
+
+      # Single attempt only — topic generation is best-effort, not worth retrying
+      case Loomkin.LLMRetry.with_retry([max_retries: 0], fn -> ReqLLM.generate_text(model, llm_messages, []) end) do
+        {:ok, response} ->
+          topic = ReqLLM.Response.classify(response).text || ""
+          topic = String.trim(topic)
+
+          if topic == "" do
+            infer_topic(messages)
+          else
+            String.slice(topic, 0, 80)
+          end
+
+        {:error, _} ->
+          infer_topic(messages)
+      end
+    end
+  rescue
+    _ -> infer_topic(messages)
+  end
+
   # --- Private ---
 
   defp find_break_point(messages, target) do
@@ -125,7 +168,8 @@ defmodule Loomkin.Teams.ContextOffload do
   defp is_user_message?(%{"role" => "user"}), do: true
   defp is_user_message?(_), do: false
 
-  defp infer_topic(messages) do
+  @doc false
+  def infer_topic(messages) do
     # Use first user message content as topic hint (truncated)
     first_user =
       Enum.find(messages, fn msg -> is_user_message?(msg) end)

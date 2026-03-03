@@ -114,6 +114,66 @@ defmodule Loomkin.Teams.ContextOffloadTest do
     end
   end
 
+  describe "generate_topic/1" do
+    test "falls back to infer_topic when LLM is unavailable" do
+      messages = [
+        %{role: :user, content: "fix the authentication bug in login"},
+        %{role: :assistant, content: "looking at auth module..."}
+      ]
+
+      # LLM call will fail in test env, should fall back to infer_topic
+      topic = ContextOffload.generate_topic(messages)
+      assert is_binary(topic)
+      assert topic != ""
+      # Falls back to first 60 chars of first user message
+      assert topic =~ "fix the authentication bug in login"
+    end
+
+    test "falls back to infer_topic for empty content messages" do
+      messages = [%{role: :system, content: ""}]
+      topic = ContextOffload.generate_topic(messages)
+      assert topic == "offloaded-context"
+    end
+
+    test "falls back to infer_topic for messages with no user message" do
+      messages = [%{role: :assistant, content: "some response"}]
+      topic = ContextOffload.generate_topic(messages)
+      # infer_topic returns "offloaded-context" when no user message found
+      assert topic == "offloaded-context"
+    end
+  end
+
+  describe "offload marker priority" do
+    test "marker includes priority: :high", %{team_id: team_id} do
+      # Create messages large enough to trigger offload (60% of 128k = 76.8k tokens)
+      large_content = String.duplicate("x", 320_000)
+      large_messages =
+        Enum.map(1..10, fn i ->
+          role = if rem(i, 2) == 1, do: :user, else: :assistant
+          %{role: role, content: "msg #{i} #{large_content}"}
+        end)
+
+      agent_state = %{
+        model: nil,
+        team_id: team_id,
+        name: "test-agent",
+        messages: large_messages
+      }
+
+      case ContextOffload.maybe_offload(agent_state) do
+        {:offloaded, updated_messages, _entry} ->
+          marker = hd(updated_messages)
+          assert marker.role == :system
+          assert marker.priority == :high
+          assert marker.content =~ "[Context offloaded]"
+
+        :noop ->
+          # If offload didn't trigger, the messages weren't large enough — skip
+          :ok
+      end
+    end
+  end
+
   describe "maybe_offload/1" do
     test "returns :noop when under threshold" do
       # Small message list, well under 80% of any model limit

@@ -174,6 +174,45 @@ defmodule Loomkin.Teams.ContextRetrievalTest do
     end
   end
 
+  describe "synthesize/2" do
+    test "returns error when no keepers match", %{team_id: team_id} do
+      assert {:error, :not_found} = ContextRetrieval.synthesize(team_id, "nonexistent")
+    end
+
+    test "returns error when no keepers exist", %{team_id: team_id} do
+      assert {:error, :not_found} = ContextRetrieval.synthesize(team_id, "anything")
+    end
+
+    test "returns synthesized answer from multiple keepers", %{team_id: team_id} do
+      spawn_keeper(team_id,
+        topic: "auth implementation",
+        source_agent: "researcher",
+        messages: [%{role: :user, content: "We use JWT tokens for auth"}]
+      )
+
+      spawn_keeper(team_id,
+        topic: "auth testing",
+        source_agent: "tester",
+        messages: [%{role: :user, content: "Auth tests cover login and logout"}]
+      )
+
+      # The LLM call fails in test (no API key), so fallback returns raw keeper context
+      {:ok, result} = ContextRetrieval.synthesize(team_id, "auth")
+      assert is_binary(result)
+      assert result =~ "JWT tokens" or result =~ "login and logout"
+    end
+
+    test "skips keepers with zero relevance", %{team_id: team_id} do
+      spawn_keeper(team_id,
+        topic: "database schema",
+        source_agent: "coder",
+        messages: [%{role: :user, content: "PostgreSQL tables"}]
+      )
+
+      assert {:error, :not_found} = ContextRetrieval.synthesize(team_id, "authentication")
+    end
+  end
+
   describe "detect_mode/1" do
     test "question mark triggers smart mode" do
       assert ContextRetrieval.detect_mode("what is this?") == :smart

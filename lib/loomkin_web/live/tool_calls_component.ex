@@ -26,16 +26,16 @@ defmodule LoomkinWeb.ToolCallsComponent do
   ]
 
   @tool_config %{
-    file_read: %{icon: "&#128196;", color: "#818cf8"},
-    file_write: %{icon: "&#9997;", color: "#34d399"},
-    file_edit: %{icon: "&#9998;", color: "#fbbf24"},
-    file_search: %{icon: "&#128269;", color: "#22d3ee"},
-    content_search: %{icon: "&#128269;", color: "#22d3ee"},
-    directory_list: %{icon: "&#128193;", color: "#a78bfa"},
-    shell: %{icon: "&#9889;", color: "#f472b6"},
-    git: %{icon: "&#128200;", color: "#fb923c"},
-    default: %{icon: "&#9881;", color: "#71717a"}
+    "file_read" => %{icon: "&#128196;", color: "#818cf8"},
+    "file_write" => %{icon: "&#9997;", color: "#34d399"},
+    "file_edit" => %{icon: "&#9998;", color: "#fbbf24"},
+    "file_search" => %{icon: "&#128269;", color: "#22d3ee"},
+    "content_search" => %{icon: "&#128269;", color: "#22d3ee"},
+    "directory_list" => %{icon: "&#128193;", color: "#a78bfa"},
+    "shell" => %{icon: "&#9889;", color: "#f472b6"},
+    "git" => %{icon: "&#128200;", color: "#fb923c"}
   }
+  @default_tool_config %{icon: "&#9881;", color: "#71717a"}
 
   @impl true
   def mount(socket) do
@@ -61,7 +61,7 @@ defmodule LoomkinWeb.ToolCallsComponent do
      |> assign(:id, assigns[:id])
      |> assign(:events, tool_events)
      |> assign(:expanded_ids, expanded_ids)
-     |> assign(:collapsed, Map.get(assigns, :collapsed, true))}
+     |> assign_new(:collapsed, fn -> true end)}
   end
 
   @impl true
@@ -160,7 +160,7 @@ defmodule LoomkinWeb.ToolCallsComponent do
     result = meta[:result]
     has_result = is_binary(result) and result != ""
     expanded = MapSet.member?(assigns.expanded_ids, event.id)
-    config = Map.get(@tool_config, tool_name_to_atom(tool_name), @tool_config.default)
+    config = Map.get(@tool_config, String.downcase(tool_name), @default_tool_config)
 
     assigns =
       assigns
@@ -233,20 +233,9 @@ defmodule LoomkinWeb.ToolCallsComponent do
 
   defp filter_tool_events(events) do
     Enum.filter(events, fn event ->
-      event.type == :tool_call
+      event.type in [:tool_call, :context_offload]
     end)
   end
-
-  defp tool_name_to_atom(name) when is_binary(name) do
-    name
-    |> String.downcase()
-    |> String.replace("-", "_")
-    |> String.to_atom()
-  rescue
-    _ -> :default
-  end
-
-  defp tool_name_to_atom(_), do: :default
 
   defp agent_color(agent_name) do
     index = :erlang.phash2(agent_name, length(@agent_colors))

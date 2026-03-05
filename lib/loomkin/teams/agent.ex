@@ -723,20 +723,36 @@ defmodule Loomkin.Teams.Agent do
 
   @impl true
   def handle_info({:query, query_id, from, question, enrichments}, state) do
-    # Don't process our own broadcast questions
-    if from == to_string(state.name) do
+    # Don't process our own broadcast questions — but allow cross-team queries
+    # even when agent names match (e.g., two "lead" agents in sibling teams)
+    same_name? = from == to_string(state.name)
+
+    same_team? =
+      case enrichments do
+        %{source_team: source_team} -> source_team == state.team_id
+        _ -> true
+      end
+
+    if same_name? and same_team? do
       {:noreply, state}
     else
-      enrichment_text =
+      # enrichments can be a list (intra-team) or a map with :source_team (cross-team)
+      {enrichment_text, source_label} =
         case enrichments do
-          [] -> ""
-          list -> "\n\nRelevant context:\n" <> Enum.join(list, "\n")
+          %{source_team: source_team} ->
+            {"", " (cross-team from #{source_team})"}
+
+          [] ->
+            {"", ""}
+
+          list when is_list(list) ->
+            {"\n\nRelevant context:\n" <> Enum.join(list, "\n"), ""}
         end
 
       query_msg = %{
         role: :user,
         content: """
-        [Query from #{from} | ID: #{query_id}]
+        [Query from #{from}#{source_label} | ID: #{query_id}]
         #{question}#{enrichment_text}
 
         You can respond using peer_answer_question with query_id "#{query_id}", \

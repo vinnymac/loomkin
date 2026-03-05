@@ -23,8 +23,8 @@ defmodule Loomkin.Teams.Role do
   @legacy_tier_models %{
     grunt: "zai:glm-4.5",
     standard: "zai:glm-5",
-    expert: "anthropic:claude-sonnet-4-6",
-    architect: "anthropic:claude-opus-4-6"
+    expert: "zai:glm-5",
+    architect: "zai:glm-5"
   }
 
   # -- Tool groups --

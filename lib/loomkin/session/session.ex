@@ -493,7 +493,7 @@ defmodule Loomkin.Session do
   end
 
   defp default_model do
-    Application.get_env(:loomkin, :default_model, "anthropic:claude-sonnet-4-6")
+    Application.get_env(:loomkin, :default_model, "zai:glm-5")
   end
 
   defp check_child_team_completion(state, _event) do

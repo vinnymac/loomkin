@@ -12,10 +12,10 @@ defmodule Loomkin.Config do
 
   @defaults %{
     model: %{
-      default: "anthropic:claude-sonnet-4-6",
+      default: "zai:glm-5",
       # Secondary model for editor tasks — nil means "use the primary model".
       # Only used when an agent determines a lesser model is acceptable.
-      # Users can set this in .loomkin.toml: [model] editor = "anthropic:claude-haiku-4-5"
+      # Users can set this in .loomkin.toml: [model] editor = "zai:glm-4.5"
       editor: nil
     },
     repo: %{

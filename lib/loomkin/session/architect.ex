@@ -1050,7 +1050,7 @@ defmodule Loomkin.Session.Architect do
   defp parse_model(model_string) do
     case String.split(model_string, ":", parts: 2) do
       [provider, model_id] -> {provider, model_id}
-      _ -> {"anthropic", model_string}
+      _ -> {"zai", model_string}
     end
   end
 
@@ -1059,7 +1059,7 @@ defmodule Loomkin.Session.Architect do
     # Falls back to config, then a sensible default.
     Keyword.get(opts, :architect_model) ||
       Loomkin.Config.get(:model, :default) ||
-      "anthropic:claude-sonnet-4-6"
+      "zai:glm-5"
   end
 
   defp resolve_editor_model(opts) do

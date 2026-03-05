@@ -170,12 +170,12 @@ defmodule Loomkin.Tools.SubAgent do
   defp weak_model do
     if Code.ensure_loaded?(Loomkin.Config) do
       try do
-        Loomkin.Config.get(:model, :editor) || "anthropic:claude-haiku-4-5"
+        Loomkin.Config.get(:model, :editor) || "zai:glm-4.5"
       rescue
-        _ -> "anthropic:claude-haiku-4-5"
+        _ -> "zai:glm-4.5"
       end
     else
-      "anthropic:claude-haiku-4-5"
+      "zai:glm-4.5"
     end
   end
 end

@@ -13,8 +13,8 @@ config :loomkin, Loomkin.Repo,
 
 # Default model configuration
 config :loomkin,
-  default_model: "anthropic:claude-sonnet-4-6",
-  weak_model: "anthropic:claude-haiku-4-5",
+  default_model: "zai:glm-5",
+  weak_model: "zai:glm-4.5",
   reserved_output_tokens: 4096,
   max_repo_map_tokens: 2048,
   max_decision_context_tokens: 1024

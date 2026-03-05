@@ -581,7 +581,7 @@ defmodule Loomkin.AgentLoop do
   defp parse_model(model_string) do
     case String.split(model_string, ":", parts: 2) do
       [provider, model_id] -> {provider, model_id}
-      _ -> {"anthropic", model_string}
+      _ -> {"zai", model_string}
     end
   end
 

@@ -10,11 +10,12 @@ defmodule Loomkin.LLM do
 
   1. Accepts the same arguments as `ReqLLM.stream_text/3` / `ReqLLM.generate_text/3`.
   2. Inspects the model spec (e.g., `"anthropic:claude-sonnet-4-6"`).
-  3. If the provider has an active OAuth token in `TokenStore`, rewrites the
-     model spec to its OAuth variant (e.g., `"anthropic_oauth:claude-sonnet-4-6"`).
-     The custom OAuth provider then handles Bearer auth automatically.
-  4. If no OAuth token is available, passes through unchanged — the stock
-     provider resolves the API key via its normal chain.
+  3. If the provider has an active OAuth token in `TokenStore`, resolves the
+     model via LLMDB using the canonical provider name, then routes through
+     the custom OAuth provider module (e.g., `AnthropicOAuth`) which handles
+     Bearer auth. This avoids LLMDB failing on unknown provider names like
+     `"anthropic_oauth"`.
+  4. If no OAuth token is available, passes through to ReqLLM unchanged.
 
   This keeps call sites completely unaware of the auth mechanism.
   """
@@ -32,8 +33,15 @@ defmodule Loomkin.LLM do
   @spec stream_text(String.t() | term(), term(), keyword()) ::
           {:ok, ReqLLM.StreamResponse.t()} | {:error, term()}
   def stream_text(model_spec, messages, opts \\ []) do
-    model_spec = maybe_upgrade_to_oauth(model_spec)
-    ReqLLM.stream_text(model_spec, messages, opts)
+    case maybe_resolve_oauth(model_spec) do
+      {:oauth, model, provider_module} ->
+        with {:ok, context} <- ReqLLM.Context.normalize(messages, opts) do
+          ReqLLM.Streaming.start_stream(provider_module, model, context, opts)
+        end
+
+      :passthrough ->
+        ReqLLM.stream_text(model_spec, messages, opts)
+    end
   end
 
   @doc """
@@ -44,8 +52,28 @@ defmodule Loomkin.LLM do
   @spec generate_text(String.t() | term(), term(), keyword()) ::
           {:ok, ReqLLM.Response.t()} | {:error, term()}
   def generate_text(model_spec, messages, opts \\ []) do
-    model_spec = maybe_upgrade_to_oauth(model_spec)
-    ReqLLM.generate_text(model_spec, messages, opts)
+    case maybe_resolve_oauth(model_spec) do
+      {:oauth, model, provider_module} ->
+        with {:ok, request} <- provider_module.prepare_request(:chat, model, messages, opts),
+             {:ok, %Req.Response{status: status, body: body}} when status in 200..299 <-
+               Req.request(request) do
+          {:ok, body}
+        else
+          {:ok, %Req.Response{status: status, body: body}} ->
+            {:error,
+             ReqLLM.Error.API.Request.exception(
+               reason: "HTTP #{status}: Request failed",
+               status: status,
+               response_body: body
+             )}
+
+          {:error, error} ->
+            {:error, error}
+        end
+
+      :passthrough ->
+        ReqLLM.generate_text(model_spec, messages, opts)
+    end
   end
 
   @doc """
@@ -86,37 +114,44 @@ defmodule Loomkin.LLM do
 
   # ── Internal ─────────────────────────────────────────────────────────
 
-  defp maybe_upgrade_to_oauth(model_spec) when is_binary(model_spec) do
+  # For OAuth providers, we resolve the model via LLMDB using the canonical
+  # provider name (e.g. "anthropic") but route through the custom OAuth provider
+  # module (e.g. AnthropicOAuth). This avoids LLMDB failing on unknown
+  # provider names like "anthropic_oauth".
+  @spec maybe_resolve_oauth(term()) :: {:oauth, struct(), module()} | :passthrough
+  defp maybe_resolve_oauth(model_spec) when is_binary(model_spec) do
     oauth_map = ProviderRegistry.oauth_provider_map()
 
     case String.split(model_spec, ":", parts: 2) do
-      [provider, model_id] ->
+      [provider, _model_id] ->
         case Map.get(oauth_map, provider) do
           nil ->
-            # No OAuth variant for this provider
-            model_spec
+            :passthrough
 
           oauth_provider ->
             provider_atom = String.to_existing_atom(provider)
 
             if TokenStore.get_access_token(provider_atom) != nil do
-              Logger.debug("Upgrading #{provider}:#{model_id} to OAuth provider")
-              "#{oauth_provider}:#{model_id}"
+              oauth_atom = String.to_existing_atom(oauth_provider)
+
+              with {:ok, model} <- ReqLLM.model(model_spec),
+                   {:ok, provider_module} <- ReqLLM.provider(oauth_atom) do
+                Logger.debug("Routing #{model_spec} via OAuth provider #{oauth_provider}")
+                {:oauth, model, provider_module}
+              else
+                _ -> :passthrough
+              end
             else
-              model_spec
+              :passthrough
             end
         end
 
       _ ->
-        # Not a "provider:model" string, pass through
-        model_spec
+        :passthrough
     end
   rescue
-    # If TokenStore isn't running or atom doesn't exist, fall through
-    _ -> model_spec
+    _ -> :passthrough
   end
 
-  # Non-string model specs (structs, tuples) pass through unchanged.
-  # OAuth upgrade only works with the standard "provider:model" string format.
-  defp maybe_upgrade_to_oauth(model_spec), do: model_spec
+  defp maybe_resolve_oauth(_model_spec), do: :passthrough
 end

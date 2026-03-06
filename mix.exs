@@ -113,6 +113,7 @@ defmodule Loomkin.MixProject do
       {:burrito, "~> 1.0"},
 
       # Dev/Test
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:tidewave, "~> 0.5", only: :dev},
       {:mox, "~> 1.0", only: :test},
       {:floki, "~> 0.37", only: :test},

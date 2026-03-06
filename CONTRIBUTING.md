@@ -16,9 +16,9 @@ We have to move fast. The sea is moving under our feet.
 
 Before you start, make sure you have:
 
-- **Elixir 1.18+** (with Erlang/OTP 27+) -- we recommend [asdf](https://asdf-vm.com/) or [mise](https://mise.jdx.dev/) for version management
-- **PostgreSQL 14+** -- running locally or via Docker
-- **Node.js 20+** -- for asset compilation
+- **Elixir 1.18+** (with Erlang/OTP 27+) -- we use [mise](https://mise.jdx.dev/) for version management (versions are pinned in `.mise.toml`)
+- **PostgreSQL 17** -- running locally or via Docker
+- **Node.js 22** -- for asset compilation
 
 You can verify your setup with:
 
@@ -37,29 +37,33 @@ node --version
    cd loomkin
    ```
 
-2. **Install dependencies, create the database, and run migrations:**
+2. **Install tooling and project dependencies:**
 
    ```bash
-   mix setup
+   make setup
    ```
-
-   This handles everything: deps, database creation, migrations, and seed data.
 
 3. **Start the dev server:**
 
    ```bash
-   mix phx.server
+   make dev
    ```
 
-   The app runs at [http://localhost:4200](http://localhost:4200).
+   The app runs at [http://localhost:4200](http://localhost:4200) or [http://loom.test:4200](http://loom.test:4200) (configured automatically by `make setup`).
 
 4. **Run the test suite:**
 
    ```bash
-   mix test
+   make test
    ```
 
-   We have 925+ tests. They should all pass on a fresh setup. If something fails, check that PostgreSQL is running and your Elixir version meets the minimum.
+   We have a large and growing test suite. Tests should all pass on a fresh setup. If something fails, check that PostgreSQL is running and your Elixir version meets the minimum.
+
+5. **See all available make targets:**
+
+   ```bash
+   make help
+   ```
 
 ## Development Workflow
 
@@ -77,15 +81,34 @@ Use prefixes like `fix/`, `feat/`, `docs/`, or `refactor/` to signal intent.
 
 ### Commits
 
-Write clear, concise commit messages. We prefer imperative mood:
+We use [Conventional Commits](https://www.conventionalcommits.org). Every commit message must start with a type prefix:
 
 ```
-Fix agent loop crash on empty tool response
-Add keyboard shortcut for team switching
-Refactor priority router classification logic
+feat: add keyboard shortcut for team switching
+fix: resolve agent loop crash on empty tool response
+docs: update setup instructions for PostgreSQL 14
+refactor: simplify priority router classification logic
+ci: pin action SHAs for supply chain security
+test: add regression test for consensus quorum edge case
 ```
 
-No need for conventional commit prefixes like `fix:` -- just describe what you did.
+Valid types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `ci`, `perf`, `revert`.
+
+The PR title must also follow this format -- it becomes the squash-merge commit message on `main`.
+
+### Git Hooks
+
+We use [Lefthook](https://github.com/evilmartians/lefthook) to enforce formatting and commit message conventions locally. Install it once after cloning:
+
+```bash
+lefthook install
+```
+
+If you haven't run `make setup`, install lefthook first: `brew bundle` (it's in the `Brewfile`).
+
+This installs two hooks:
+- **pre-commit** -- runs `mix format --check-formatted` and blocks if formatting is off
+- **commit-msg** -- validates your commit message against the conventional commits rules
 
 ### Before You Commit
 

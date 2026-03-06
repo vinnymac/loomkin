@@ -28,6 +28,10 @@ loomkin-*.tar
 /assets/node_modules/
 npm-debug.log
 
+# Root-level JS tooling (commitlint)
+/node_modules/
+/package-lock.json
+
 # Database files
 *.db
 *.db-journal

@@ -1,0 +1,11 @@
+pre-commit:
+  commands:
+    format:
+      run: mix format --check-formatted
+      fail_text: "Run `mix format` to fix formatting"
+
+commit-msg:
+  commands:
+    commitlint:
+      run: npx --no-install commitlint --edit {1}
+      fail_text: "Commit message must follow conventional commits: https://www.conventionalcommits.org"

@@ -2,6 +2,7 @@ import Config
 
 # Development endpoint configuration
 config :loomkin, LoomkinWeb.Endpoint,
+  url: [host: "loom.test", port: 4200],
   http: [ip: {127, 0, 0, 1}, port: 4200],
   check_origin: false,
   code_reloader: true,

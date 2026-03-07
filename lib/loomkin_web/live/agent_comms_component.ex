@@ -101,6 +101,12 @@ defmodule LoomkinWeb.AgentCommsComponent do
       accent_border: "rgba(34, 211, 238, 0.25)",
       accent_text: "#67e8f9",
       accent_bg: "rgba(34, 211, 238, 0.08)"
+    },
+    peer_message: %{
+      icon: "💬",
+      accent_border: "rgba(96, 165, 250, 0.30)",
+      accent_text: "#93bbfd",
+      accent_bg: "rgba(96, 165, 250, 0.08)"
     }
   }
 

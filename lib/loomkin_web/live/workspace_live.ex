@@ -1658,7 +1658,7 @@ defmodule LoomkinWeb.WorkspaceLive do
           content: "#{agent_name} joined",
           timestamp: DateTime.utc_now(),
           expanded: false,
-          metadata: %{}
+          metadata: %{team_id: child_team_id}
         }
 
         sock
@@ -2774,7 +2774,7 @@ defmodule LoomkinWeb.WorkspaceLive do
             content: "#{agent.name} joined",
             timestamp: DateTime.utc_now(),
             expanded: false,
-            metadata: %{agent_name: agent.name, role: agent.role}
+            metadata: %{agent_name: agent.name, role: agent.role, team_id: team_id}
           }
 
           new_known = [agent.name | sock.assigns.activity_known_agents]

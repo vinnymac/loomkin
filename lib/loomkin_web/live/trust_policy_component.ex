@@ -23,13 +23,14 @@ defmodule LoomkinWeb.TrustPolicyComponent do
         :if={!@expanded}
         id="trust-summary"
         phx-click="toggle_trust_panel"
-        class="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-700/30 bg-gray-800/50 cursor-pointer transition-colors hover:bg-gray-800/70"
+        class="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs press-down cursor-pointer text-secondary border border-subtle transition-all duration-150"
       >
+        <span class="text-[10px] uppercase tracking-wider mr-0.5 text-muted">Trust</span>
         <div
-          class="w-2 h-2 rounded-full flex-shrink-0"
+          class="w-1.5 h-1.5 rounded-full flex-shrink-0"
           style={"background: #{preset_color(@current_preset)};"}
         />
-        <span class="text-[10px] font-medium text-secondary">
+        <span class="font-medium text-primary">
           {preset_label(@current_preset)}
         </span>
         <span
@@ -53,9 +54,9 @@ defmodule LoomkinWeb.TrustPolicyComponent do
       <div
         :if={@expanded}
         id="trust-details"
-        class="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-700/30 bg-gray-800/50"
+        class="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs border border-brand transition-all duration-150"
       >
-        <span class="text-[10px] text-gray-500 uppercase tracking-wider flex-shrink-0">
+        <span class="text-[10px] uppercase tracking-wider mr-0.5 text-muted flex-shrink-0">
           Trust
         </span>
         <div class="flex gap-1">
@@ -64,23 +65,18 @@ defmodule LoomkinWeb.TrustPolicyComponent do
             phx-click="set_trust_preset"
             phx-value-preset={preset}
             class={[
-              "px-2 py-1 text-[10px] rounded-lg transition-all",
+              "px-2 py-0.5 text-[10px] rounded-md transition-all",
               if(@current_preset == preset,
                 do: "bg-violet-500/20 text-violet-400 border border-violet-500/30",
-                else: "text-gray-500 hover:text-gray-400 hover:bg-gray-800"
+                else: "text-muted hover:text-secondary hover:bg-surface-3"
               )
             ]}
           >
             {preset_label(preset)}
           </button>
         </div>
-        <div
-          class="w-2 h-2 rounded-full ml-1 flex-shrink-0"
-          style={"background: #{preset_color(@current_preset)};"}
-          title={"Trust level: #{preset_label(@current_preset)}"}
-        />
         <button
-          class="ml-1 p-0.5 rounded interactive flex-shrink-0 text-muted"
+          class="p-0.5 rounded interactive flex-shrink-0 text-muted"
           phx-click="toggle_trust_panel"
           title="Collapse"
         >
@@ -101,7 +97,7 @@ defmodule LoomkinWeb.TrustPolicyComponent do
   def preset_label(:balanced), do: "Balanced"
   def preset_label(:autonomous), do: "Autonomous"
   def preset_label(:full_trust), do: "Full Trust"
-  def preset_label(_), do: "Unknown"
+  def preset_label(_), do: "Balanced"
 
   @doc """
   Returns a color hex string indicating the trust level.

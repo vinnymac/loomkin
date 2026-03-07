@@ -2899,13 +2899,13 @@ defmodule LoomkinWeb.WorkspaceLive do
             </div>
           </div>
 
-          <%!-- Queue button --%>
-          <div class="relative flex-shrink-0">
+          <%!-- Queue button (only shown when replying to an agent) --%>
+          <div :if={@reply_target} class="relative flex-shrink-0">
             <button
               type="button"
               phx-click="toggle_queue_from_composer"
               class="flex items-center justify-center h-9 px-2 rounded-lg transition-all duration-200 press-down border border-subtle text-muted bg-transparent"
-              title="View message queue"
+              title={"View #{@reply_target.agent}'s message queue"}
             >
               <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5a.75.75 0 01-.75-.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10z" />

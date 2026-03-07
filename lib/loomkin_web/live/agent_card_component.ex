@@ -77,7 +77,12 @@ defmodule LoomkinWeb.AgentCardComponent do
     ~H"""
     <div
       id={"agent-card-#{@card.name}"}
+      role="button"
+      tabindex={if @focused, do: "-1", else: "0"}
+      aria-label={"#{@card.name} — #{status_label(@card.status)}"}
       phx-click="focus_card_agent"
+      phx-keydown="focus_card_agent"
+      phx-key="Enter"
       phx-value-agent={@card.name}
       class={[
         "group relative animate-fade-in flex flex-row overflow-hidden kin-card",
@@ -85,7 +90,9 @@ defmodule LoomkinWeb.AgentCardComponent do
           do: "card-brand card-focused-glow h-full rounded-lg",
           else: "min-h-[140px] cursor-pointer kin-card-idle rounded-lg"
         ),
-        card_state_class(@card.content_type, @card.status)
+        card_state_class(@card.content_type, @card.status),
+        @card[:new] && "agent-card-enter",
+        @card[:terminated] && "agent-card-terminated"
       ]}
       style={card_style(@card.content_type, @card.last_tool, @agent_color, @focused)}
     >
@@ -169,10 +176,14 @@ defmodule LoomkinWeb.AgentCardComponent do
         <div class="flex items-start gap-2.5">
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-1.5">
-              <span class={[
-                "w-1.5 h-1.5 rounded-full flex-shrink-0 status-dot-transition",
-                status_dot_class(@card.status)
-              ]} />
+              <span
+                class={[
+                  "w-1.5 h-1.5 rounded-full flex-shrink-0 status-dot-transition",
+                  status_dot_class(@card.status)
+                ]}
+                aria-hidden="true"
+              />
+              <span class="sr-only">{status_label(@card.status)}</span>
               <span
                 class="text-[13px] font-semibold truncate tracking-tight"
                 style={"color: #{@agent_color};"}
@@ -194,23 +205,29 @@ defmodule LoomkinWeb.AgentCardComponent do
               >
                 {format_model(@model)}
               </span>
+              <span
+                :if={@card[:team_id] && @team_id && @card[:team_id] != @team_id}
+                class="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700/50"
+              >
+                {short_team_label(@card[:team_id])}
+              </span>
             </div>
           </div>
 
           <%!-- Action buttons --%>
           <div
-            class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100"
+            class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
             style="transition: opacity var(--transition-base);"
           >
             <button
               phx-click="reply_to_card_agent"
               phx-value-agent={@card.name}
               phx-value-team-id={@team_id}
-              title={"Reply to #{@card.name}"}
+              aria-label={"Reply to #{@card.name}"}
               class="text-muted hover:text-brand p-1 rounded hover:bg-surface-3 flex-shrink-0"
               style="transition: color var(--transition-base), background var(--transition-base);"
             >
-              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path
                   fill-rule="evenodd"
                   d="M7.707 3.293a1 1 0 010 1.414L5.414 7H11a7 7 0 017 7v2a1 1 0 11-2 0v-2a5 5 0 00-5-5H5.414l2.293 2.293a1 1 0 11-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
@@ -223,11 +240,11 @@ defmodule LoomkinWeb.AgentCardComponent do
               phx-click="pause_card_agent"
               phx-value-agent={@card.name}
               phx-value-team-id={@team_id}
-              title={"Pause #{@card.name}"}
+              aria-label={"Pause #{@card.name}"}
               class="text-muted hover:text-amber-400 p-1 rounded hover:bg-surface-3 flex-shrink-0"
               style="transition: color var(--transition-base), background var(--transition-base);"
             >
-              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path
                   fill-rule="evenodd"
                   d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
@@ -240,11 +257,11 @@ defmodule LoomkinWeb.AgentCardComponent do
               phx-click="resume_card_agent"
               phx-value-agent={@card.name}
               phx-value-team-id={@team_id}
-              title={"Resume #{@card.name}"}
+              aria-label={"Resume #{@card.name}"}
               class="text-muted hover:text-green-400 p-1 rounded hover:bg-surface-3 flex-shrink-0"
               style="transition: color var(--transition-base), background var(--transition-base);"
             >
-              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path
                   fill-rule="evenodd"
                   d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
@@ -257,11 +274,11 @@ defmodule LoomkinWeb.AgentCardComponent do
               phx-click="steer_card_agent"
               phx-value-agent={@card.name}
               phx-value-team-id={@team_id}
-              title={"Steer #{@card.name}"}
+              aria-label={"Steer #{@card.name}"}
               class="text-muted hover:text-brand p-1 rounded hover:bg-surface-3 flex-shrink-0"
               style="transition: color var(--transition-base), background var(--transition-base);"
             >
-              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
               </svg>
             </button>
@@ -395,6 +412,15 @@ defmodule LoomkinWeb.AgentCardComponent do
   defp status_dot_class(:complete), do: "bg-emerald-400"
   defp status_dot_class(_), do: "bg-zinc-500"
 
+  defp status_label(:working), do: "Working"
+  defp status_label(:idle), do: "Idle"
+  defp status_label(:blocked), do: "Blocked"
+  defp status_label(:paused), do: "Paused"
+  defp status_label(:error), do: "Error"
+  defp status_label(:waiting_permission), do: "Waiting for permission"
+  defp status_label(:complete), do: "Complete"
+  defp status_label(_), do: "Unknown"
+
   # --- Capability bars ---
 
   defp capability_bars(assigns) do
@@ -492,6 +518,16 @@ defmodule LoomkinWeb.AgentCardComponent do
   end
 
   defp format_model(_), do: ""
+
+  defp short_team_label(team_id) when is_binary(team_id) do
+    if String.length(team_id) > 8 do
+      "sub-" <> String.slice(team_id, 0, 4)
+    else
+      team_id
+    end
+  end
+
+  defp short_team_label(_), do: ""
 
   defp hex_to_rgba("#" <> <<r::binary-size(2), g::binary-size(2), b::binary-size(2)>>, alpha) do
     "rgba(#{String.to_integer(r, 16)}, #{String.to_integer(g, 16)}, #{String.to_integer(b, 16)}, #{alpha})"

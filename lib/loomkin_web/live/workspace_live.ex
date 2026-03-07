@@ -2231,6 +2231,18 @@ defmodule LoomkinWeb.WorkspaceLive do
     {:noreply, socket}
   end
 
+  # Remove terminated agent card after animation completes
+  def handle_info({:remove_terminated_card, agent_name}, socket) do
+    cards = Map.delete(socket.assigns.agent_cards, agent_name)
+
+    socket =
+      socket
+      |> assign(agent_cards: cards)
+      |> update_card_ordering()
+
+    {:noreply, socket}
+  end
+
   # Catch-all
   def handle_info(msg, socket) do
     require Logger
@@ -3448,7 +3460,7 @@ defmodule LoomkinWeb.WorkspaceLive do
         content: "#{agent} joined",
         timestamp: DateTime.utc_now(),
         expanded: false,
-        metadata: %{}
+        metadata: %{team_id: card.team_id}
       }
 
       socket
@@ -3508,6 +3520,15 @@ defmodule LoomkinWeb.WorkspaceLive do
         %{}
       end
 
+    # Schedule card removal after termination animation
+    extra =
+      if status == :complete do
+        Process.send_after(self(), {:remove_terminated_card, agent_name}, 3_000)
+        Map.put(extra, :terminated, true)
+      else
+        extra
+      end
+
     update_agent_card(
       socket,
       agent_name,
@@ -3546,7 +3567,8 @@ defmodule LoomkinWeb.WorkspaceLive do
       model: nil,
       budget_used: 0,
       budget_limit: 0,
-      updated_at: DateTime.utc_now()
+      updated_at: DateTime.utc_now(),
+      new: true
     }
   end
 

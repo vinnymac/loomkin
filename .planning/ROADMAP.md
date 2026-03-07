@@ -72,7 +72,11 @@ Plans:
   3. Agent-to-agent peer messages from child sub-teams appear in the comms feed alongside messages from the root team
   4. The comms feed uses LiveView stream/3 — adding a new message does not trigger a full list re-render (verifiable via browser DevTools DOM patch size)
   5. Agent color identity is consistent: each agent's messages and card use the same color across all feed updates
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Peer message signal pipeline, TeamBroadcaster critical classification, stream cap, type config
+- [ ] 03-02-PLAN.md — Team badges, auto-scroll JS hook, card insertion/removal animations, visual verification
 
 ### Phase 4: Task Graph & Crash Recovery
 **Goal**: The task dependency graph shows blocked-by relationships visually, and OTP agent crashes are reflected in the UI as recovered status without a manual page refresh
@@ -164,7 +168,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Monolith Extraction | 6/6 | Complete |  |
 | 2. Signal Infrastructure | 3/4 | Gap closure | - |
-| 3. Live Comms Feed | 0/TBD | Not started | - |
+| 3. Live Comms Feed | 0/2 | Planned | - |
 | 4. Task Graph & Crash Recovery | 0/TBD | Not started | - |
 | 5. Chat Injection & State Machines | 0/TBD | Not started | - |
 | 6. Approval Gates | 0/TBD | Not started | - |

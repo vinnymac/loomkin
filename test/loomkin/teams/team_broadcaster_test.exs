@@ -95,6 +95,19 @@ defmodule Loomkin.Teams.TeamBroadcasterTest do
     end
   end
 
+  describe "peer message critical classification" do
+    test "collaboration.peer.message is classified as critical" do
+      broadcaster = start_broadcaster()
+      TeamBroadcaster.subscribe(broadcaster, self())
+
+      signal = build_signal("collaboration.peer.message")
+      Signals.publish(signal)
+
+      assert_receive {:team_broadcast, %{critical: [received]}}, 50
+      assert received.type == "collaboration.peer.message"
+    end
+  end
+
   describe "team_id filtering" do
     test "subscriber receives signals matching their team_ids" do
       broadcaster = start_broadcaster(team_ids: [@team_id])

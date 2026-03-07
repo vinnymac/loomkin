@@ -678,7 +678,7 @@ defmodule LoomkinWeb.WorkspaceLive do
       {:ok, _msg} ->
         {:noreply,
          socket
-         |> assign(schedule_popover: false, input_text: "")
+         |> assign(input_text: "")
          |> put_flash(:info, "Message scheduled for #{delay_minutes}m from now")
          |> push_event("clear-input", %{})}
 

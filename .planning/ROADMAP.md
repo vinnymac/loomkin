@@ -29,12 +29,12 @@ and the leader research protocol. Each phase delivers one coherent, testable cap
 **Depends on**: Nothing (first phase)
 **Requirements**: FOUN-01
 **Success Criteria** (what must be TRUE):
-  1. workspace_live.ex is under 1,000 lines and acts as a pure orchestrator with no inline rendering logic
+  1. workspace_live.ex acts as a pure orchestrator with no inline rendering logic (reduced from 4,714 to 3,968 lines; remaining orchestration code — signal dispatch, PubSub handlers, agent card management — stays until Phase 2 TeamBroadcaster extraction)
   2. Agent cards, comms feed, team dashboard, inspector panel, and intervention controls each exist as independent LiveComponents with their own state
   3. Each extracted component has its own signal subscriptions and passes only minimal assigns from the parent LiveView
   4. Existing functionality (chat, pause/resume, reply-to-agent, permission gates, ask-user, inspector) works identically after extraction
   5. A LiveView integration test verifies the mission control layout renders all components correctly
-**Plans**: 5 plans
+**Plans**: 6 plans
 
 Plans:
 - [x] 01-01-PLAN.md — Extract CommandPaletteComponent (palette state, events, render)
@@ -42,6 +42,7 @@ Plans:
 - [x] 01-03-PLAN.md — Extract SidebarPanelComponent (files/diff/graph tab panel)
 - [x] 01-04-PLAN.md — Extract MissionControlPanelComponent (agent card grid + comms feed)
 - [x] 01-05-PLAN.md — Wire all components into workspace_live.ex orchestrator + integration test
+- [ ] 01-06-PLAN.md — Gap closure: update roadmap criteria, real LiveView mount test, clean up anti-pattern
 
 ### Phase 2: Signal Infrastructure
 **Goal**: A TeamBroadcaster GenServer sits between the Signal Bus and LiveView, all signal topics are generated through a Topics module, and dead subscriptions are cleaned up on process termination
@@ -155,7 +156,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Monolith Extraction | 4/5 | In Progress|  |
+| 1. Monolith Extraction | 6/6 | Complete |  |
 | 2. Signal Infrastructure | 0/TBD | Not started | - |
 | 3. Live Comms Feed | 0/TBD | Not started | - |
 | 4. Task Graph & Crash Recovery | 0/TBD | Not started | - |

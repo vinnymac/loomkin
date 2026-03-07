@@ -47,13 +47,18 @@ defmodule LoomkinWeb.FileTreeComponent do
 
   def update(assigns, socket) do
     previous_path = socket.assigns[:project_path]
+    previous_version = socket.assigns[:version]
     socket = assign(socket, assigns)
 
     project_path = assigns[:project_path]
+    version = assigns[:version]
 
-    if project_path && project_path != "" && project_path != previous_path do
+    path_changed = project_path && project_path != "" && project_path != previous_path
+    version_changed = version && version != previous_version
+
+    if path_changed || version_changed do
       socket = cancel_scan(socket)
-      {:ok, start_async_scan(socket, project_path)}
+      {:ok, start_async_scan(socket, project_path || previous_path)}
     else
       {:ok, socket}
     end

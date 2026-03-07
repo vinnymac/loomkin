@@ -162,16 +162,18 @@ body {
     var(--surface-3)
   );
   border: 1px solid var(--border-default);
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
   box-shadow: var(--shadow-sm);
   transition: border-color var(--transition-base),
               box-shadow var(--transition-base),
-              transform var(--transition-base);
+              transform var(--transition-base),
+              filter var(--transition-base);
 }
 
 .card-elevated:hover {
   border-color: var(--border-hover);
   box-shadow: var(--shadow-md);
+  filter: brightness(1.05);
 }
 
 .card-brand {
@@ -181,7 +183,7 @@ body {
     rgba(124, 58, 237, 0.02)
   );
   border: 1px solid var(--border-brand);
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
   transition: border-color var(--transition-base), box-shadow var(--transition-base);
 }
 
@@ -321,6 +323,18 @@ body {
               0 4px 16px -4px rgba(124, 58, 237, 0.1);
 }
 
+/* ── Brand Active Indicator ──
+   Subtle glow on the brand mark SVG when agents are working */
+.brand-active svg {
+  filter: drop-shadow(0 0 6px rgba(124, 58, 237, 0.5));
+  animation: brand-pulse 2s ease-in-out infinite;
+}
+
+@keyframes brand-pulse {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(124, 58, 237, 0.3)); }
+  50% { filter: drop-shadow(0 0 10px rgba(124, 58, 237, 0.6)); }
+}
+
 /* ══════════════════════════════════════════
    Chevron Rotation
    ══════════════════════════════════════════ */
@@ -377,6 +391,20 @@ body {
 
 .animate-fade-in-up {
   animation: fadeInUp 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Drawer slide-in from right */
+@keyframes drawerSlideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.drawer-slide-in {
+  animation: drawerSlideIn 0.25s ease-out;
 }
 
 .thinking-dot {
@@ -622,19 +650,47 @@ body {
 }
 
 /* ── Agent Card State Animations ── */
-.agent-card-thinking {
-  animation: glow-breathe 3s ease-in-out infinite;
+
+/* Card breathing — thinking state */
+.card-breathing {
+  animation: card-breathe 3s ease-in-out infinite;
+  border-color: var(--border-brand);
 }
 
-.agent-card-working {
-  background-image: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(124, 58, 237, 0.03) 50%,
-    transparent 100%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 3s linear infinite;
+@keyframes card-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0); border-color: var(--border-brand); }
+  50% { box-shadow: 0 0 15px 0 rgba(124, 58, 237, 0.15); border-color: rgba(124, 58, 237, 0.4); }
+}
+
+/* Card tool-active — shifts border to tool accent */
+.card-tool-active {
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Card idle — quieter presence */
+.card-idle {
+  opacity: 0.7;
+  transition: opacity 0.5s ease;
+}
+.card-idle:hover {
+  opacity: 1;
+}
+
+/* Card error */
+.card-error {
+  border-color: var(--accent-rose);
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.1);
+}
+
+/* Card streaming */
+.card-streaming {
+  border-left: 2px solid rgba(124, 58, 237, 0.5);
+  animation: streaming-border 2s ease-in-out infinite;
+}
+
+@keyframes streaming-border {
+  0%, 100% { border-left-color: rgba(124, 58, 237, 0.3); }
+  50% { border-left-color: rgba(124, 58, 237, 0.7); }
 }
 
 .agent-card-blocked {
@@ -652,14 +708,78 @@ body {
   transition: opacity var(--transition-base), filter var(--transition-base);
 }
 
-.agent-card-streaming {
-  border-left: 2px solid rgba(124, 58, 237, 0.5);
-  animation: streaming-border 2s ease-in-out infinite;
+/* Card grain texture overlay */
+.card-grain {
+  position: relative;
+}
+.card-grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 1;
 }
 
-@keyframes streaming-border {
-  0%, 100% { border-left-color: rgba(124, 58, 237, 0.3); }
-  50% { border-left-color: rgba(124, 58, 237, 0.7); }
+/* ── Kin Card — bespoke agent identity ── */
+
+.kin-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  transition: border-color var(--transition-base),
+              box-shadow var(--transition-base),
+              transform var(--transition-base);
+}
+
+.kin-card-idle {
+  box-shadow: var(--shadow-sm);
+}
+.kin-card-idle:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  filter: brightness(1.06);
+}
+
+/* Left accent bar glow when active */
+.kin-accent-bar {
+  transition: box-shadow var(--transition-base), opacity var(--transition-base);
+}
+.card-breathing .kin-accent-bar,
+.card-tool-active .kin-accent-bar,
+.card-streaming .kin-accent-bar {
+  box-shadow: 2px 0 12px currentColor;
+}
+.card-idle .kin-accent-bar {
+  opacity: 0.4;
+}
+
+/* Thought well — left-bordered content area for active thinking */
+.kin-thought-well {
+  padding: 0.5rem 0.625rem;
+  border-left: 2px solid var(--kin-color, var(--border-brand));
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(90deg, rgba(255,255,255,0.015), transparent 60%);
+}
+
+/* Idle cursor blink */
+.kin-idle-blink {
+  animation: kin-blink 1.2s step-end infinite;
+}
+@keyframes kin-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Grid ambient energy when agents are active */
+.grid-alive {
+  background: radial-gradient(ellipse at center, rgba(124, 58, 237, 0.02) 0%, transparent 70%);
+}
+
+/* Focused card — dramatic presence with agent color gradient */
+.card-focused-glow {
+  box-shadow: 0 0 24px rgba(124, 58, 237, 0.2);
 }
 
 .status-dot-transition {
@@ -714,7 +834,7 @@ body {
 .event-card-error { border-left: 2px solid #f87171; }
 .event-card-spawn { border-left: 2px solid #4ade80; }
 .event-card-context { border-left: 2px solid #a78bfa; }
-.event-card-streaming { border-left: 2px solid #818cf8; animation: pulse-border 2s infinite; }
+.event-card-streaming { border-left: 2px solid #818cf8; animation: pulse-border 2s ease-in-out infinite; }
 
 /* ══════════════════════════════════════════
    File Preview - Syntax Highlighting
@@ -956,4 +1076,15 @@ body {
   );
   background-size: 200% 100%;
   animation: shimmer 2s linear infinite;
+}
+
+/* ══════════════════════════════════════════
+   Reduced Motion — Accessibility
+   ══════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -29,11 +29,13 @@ defmodule LoomkinWeb.WorkspaceLive do
         pending_permissions: [],
         page_title: "Loomkin Workspace",
         team_id: params["team_id"],
-        child_teams: [],
+        team_tree: %{},
+        team_names: %{},
         active_team_id: params["team_id"],
         team_sub_tab: :activity,
         streaming: false,
         streaming_content: "",
+        streaming_agent: nil,
         architect_phase: nil,
         plan_steps: [],
         current_step: nil,
@@ -235,9 +237,27 @@ defmodule LoomkinWeb.WorkspaceLive do
 
     session_metrics = Loomkin.Telemetry.Metrics.session_metrics(session_id)
 
-    # Recover child teams if backing team exists
+    # Recover child teams if backing team exists — rebuild tree map from Manager
     team_id = socket.assigns[:team_id]
-    child_teams = if team_id, do: Teams.Manager.list_sub_teams(team_id), else: []
+
+    team_tree =
+      if team_id do
+        child_ids = Teams.Manager.list_sub_teams(team_id)
+
+        Enum.reduce(child_ids, %{}, fn child_id, acc ->
+          case Teams.Manager.get_team_meta(child_id) do
+            {:ok, meta} ->
+              parent_id = meta[:parent_team_id] || team_id
+              Map.update(acc, parent_id, [child_id], &[child_id | &1])
+
+            _ ->
+              acc
+          end
+        end)
+      else
+        %{}
+      end
+
     active_team_id = socket.assigns[:active_team_id] || team_id
     channel_bindings = load_channel_bindings(active_team_id)
 
@@ -293,7 +313,8 @@ defmodule LoomkinWeb.WorkspaceLive do
       session_cost: session_metrics.cost_usd,
       session_tokens: session_metrics.prompt_tokens + session_metrics.completion_tokens,
       page_title: session_page_title(session_id),
-      child_teams: child_teams,
+      team_tree: team_tree,
+      team_names: %{},
       active_team_id: active_team_id,
       scheduled_messages: scheduled_messages,
       switch_project_modal: nil,
@@ -382,22 +403,34 @@ defmodule LoomkinWeb.WorkspaceLive do
 
       nil ->
         if socket.assigns.broadcast_mode do
-          # Broadcast to all team agents
           team_id = socket.assigns.team_id
           agents = Loomkin.Teams.Manager.list_agents(team_id)
+          session_id = socket.assigns.session_id
 
-          Enum.each(agents, fn agent ->
-            Task.Supervisor.start_child(Loomkin.Teams.TaskSupervisor, fn ->
-              try do
-                Loomkin.Teams.Agent.inject_broadcast(
-                  agent.pid,
-                  "[Broadcast from Human]: #{trimmed}"
-                )
-              catch
-                :exit, _ -> :ok
-              end
+          # Always route through session for persistence + concierge handling
+          task =
+            Task.Supervisor.async_nolink(Loomkin.Teams.TaskSupervisor, fn ->
+              Session.send_message(session_id, trimmed)
             end)
+
+          # Additionally broadcast to non-bootstrap agents (for multi-agent awareness)
+          Enum.each(agents, fn agent ->
+            if agent.name not in ["concierge", "orienter"] do
+              Task.Supervisor.start_child(Loomkin.Teams.TaskSupervisor, fn ->
+                try do
+                  Loomkin.Teams.Agent.inject_broadcast(
+                    agent.pid,
+                    "[Broadcast from Human]: #{trimmed}"
+                  )
+                catch
+                  :exit, _ -> :ok
+                end
+              end)
+            end
           end)
+
+          user_msg = %{role: :user, content: trimmed}
+          updated_messages = Enum.take(socket.assigns.messages ++ [user_msg], -@max_messages)
 
           broadcast_event = %{
             id: Ecto.UUID.generate(),
@@ -414,6 +447,9 @@ defmodule LoomkinWeb.WorkspaceLive do
            |> push_activity_event(broadcast_event)
            |> assign(
              input_text: "",
+             async_task: task,
+             status: :thinking,
+             messages: updated_messages,
              last_user_message: %{text: trimmed, to: "All Agents"}
            )
            |> push_event("clear-input", %{})}
@@ -485,7 +521,9 @@ defmodule LoomkinWeb.WorkspaceLive do
 
   def handle_event("cancel", _params, socket) do
     Session.cancel(socket.assigns.session_id)
-    {:noreply, assign(socket, status: :idle, streaming: false, streaming_content: "")}
+
+    {:noreply,
+     assign(socket, status: :idle, streaming: false, streaming_content: "", streaming_agent: nil)}
   end
 
   def handle_event("reply_to_agent", %{"agent" => agent_name}, socket) do
@@ -1108,8 +1146,8 @@ defmodule LoomkinWeb.WorkspaceLive do
   end
 
   def handle_info(%Jido.Signal{type: "team.child.created"} = sig, socket) do
-    %{team_id: tid} = sig.data
-    handle_info({:child_team_created, tid}, socket)
+    %{team_id: tid, parent_team_id: parent_id, team_name: team_name} = sig.data
+    handle_info({:child_team_created, tid, parent_id, team_name}, socket)
   end
 
   def handle_info(%Jido.Signal{type: "team.ask_user.question"} = sig, socket) do
@@ -1495,16 +1533,19 @@ defmodule LoomkinWeb.WorkspaceLive do
   def handle_info({:child_team_available, _session_id, child_team_id}, socket) do
     socket = subscribe_to_team(socket, child_team_id)
 
-    child_teams =
-      if child_team_id in socket.assigns.child_teams do
-        socket.assigns.child_teams
+    # Use team_id as fallback parent for session reconnect path (no signal data available)
+    parent_id = socket.assigns.team_id || child_team_id
+
+    updated_tree =
+      if child_team_id in Map.get(socket.assigns.team_tree, parent_id, []) do
+        socket.assigns.team_tree
       else
-        [child_team_id | socket.assigns.child_teams]
+        Map.update(socket.assigns.team_tree, parent_id, [child_team_id], &[child_team_id | &1])
       end
 
     socket =
       socket
-      |> assign(child_teams: child_teams, mode: :mission_control)
+      |> assign(team_tree: updated_tree, mode: :mission_control)
       |> schedule_roster_refresh()
 
     {:noreply, socket}
@@ -1528,21 +1569,22 @@ defmodule LoomkinWeb.WorkspaceLive do
   def handle_info({:session_cancelled, _session_id}, socket) do
     {:noreply,
      socket
-     |> assign(streaming: false, streaming_content: "", status: :idle)
+     |> assign(streaming: false, streaming_content: "", streaming_agent: nil, status: :idle)
      |> put_flash(:info, "Request cancelled")}
   end
 
   def handle_info({:llm_error, _session_id, message}, socket) do
     {:noreply,
      socket
-     |> assign(streaming: false, streaming_content: "", status: :idle)
+     |> assign(streaming: false, streaming_content: "", streaming_agent: nil, status: :idle)
      |> put_flash(:error, message)}
   end
 
   # --- Streaming ---
 
   def handle_info({:stream_start, _session_id}, socket) do
-    {:noreply, assign(socket, streaming: true, streaming_content: "")}
+    {:noreply,
+     assign(socket, streaming: true, streaming_content: "", streaming_agent: "Architect")}
   end
 
   def handle_info({:stream_delta, _session_id, %{text: chunk}}, socket) do
@@ -1550,7 +1592,7 @@ defmodule LoomkinWeb.WorkspaceLive do
   end
 
   def handle_info({:stream_end, _session_id}, socket) do
-    {:noreply, assign(socket, streaming: false, streaming_content: "")}
+    {:noreply, assign(socket, streaming: false, streaming_content: "", streaming_agent: nil)}
   end
 
   # --- Architect Steps ---
@@ -1924,23 +1966,28 @@ defmodule LoomkinWeb.WorkspaceLive do
     {:noreply, socket}
   end
 
-  def handle_info({:child_team_created, child_team_id}, socket) do
+  def handle_info({:child_team_created, child_team_id, parent_team_id, team_name}, socket) do
     require Logger
-    Logger.info("[Kin:UI] :child_team_created child=#{child_team_id}")
+    Logger.info("[Kin:UI] :child_team_created child=#{child_team_id} parent=#{parent_team_id}")
 
-    child_teams =
-      if child_team_id in socket.assigns.child_teams do
-        socket.assigns.child_teams
+    tree = socket.assigns.team_tree
+
+    updated_tree =
+      if child_team_id in Map.get(tree, parent_team_id, []) do
+        tree
       else
-        [child_team_id | socket.assigns.child_teams]
+        Map.update(tree, parent_team_id, [child_team_id], &[child_team_id | &1])
       end
+
+    updated_names = Map.put(socket.assigns.team_names, child_team_id, team_name)
 
     existing_card_names = Map.keys(socket.assigns.agent_cards)
 
     socket =
       socket
       |> subscribe_to_team(child_team_id)
-      |> assign(:child_teams, child_teams)
+      |> assign(:team_tree, updated_tree)
+      |> assign(:team_names, updated_names)
       |> refresh_roster()
       |> sync_cards_with_roster()
 
@@ -1975,7 +2022,8 @@ defmodule LoomkinWeb.WorkspaceLive do
       {:noreply,
        assign(socket,
          team_id: nil,
-         child_teams: [],
+         team_tree: %{},
+         team_names: %{},
          active_team_id: nil,
          active_tab: :files,
          mode: :solo,
@@ -1983,7 +2031,18 @@ defmodule LoomkinWeb.WorkspaceLive do
          inspector_mode: :auto_follow
        )}
     else
-      child_teams = List.delete(socket.assigns.child_teams, team_id)
+      # Find all descendants and unsubscribe from each
+      descendants = collect_descendants(socket.assigns.team_tree, team_id)
+      all_to_remove = [team_id | descendants]
+
+      Enum.each(all_to_remove, fn tid ->
+        Phoenix.PubSub.unsubscribe(Loomkin.PubSub, Topics.team_pubsub(tid))
+      end)
+
+      updated_tree =
+        Enum.reduce(all_to_remove, socket.assigns.team_tree, &remove_from_tree(&2, &1))
+
+      updated_names = Map.drop(socket.assigns.team_names, all_to_remove)
 
       active_team_id =
         if socket.assigns.active_team_id == team_id,
@@ -1992,12 +2051,17 @@ defmodule LoomkinWeb.WorkspaceLive do
 
       # Switch back to solo if no teams remain
       mode =
-        if child_teams == [] && socket.assigns.team_id == nil,
+        if updated_tree == %{} && socket.assigns.team_id == nil,
           do: :solo,
           else: socket.assigns.mode
 
       {:noreply,
-       assign(socket, child_teams: child_teams, active_team_id: active_team_id, mode: mode)}
+       assign(socket,
+         team_tree: updated_tree,
+         team_names: updated_names,
+         active_team_id: active_team_id,
+         mode: mode
+       )}
     end
   end
 
@@ -2031,12 +2095,22 @@ defmodule LoomkinWeb.WorkspaceLive do
 
             {:error, :cancelled} ->
               # User-initiated cancel — no error flash needed
-              assign(socket, streaming: false, streaming_content: "", failed_message_idx: nil)
+              assign(socket,
+                streaming: false,
+                streaming_content: "",
+                streaming_agent: nil,
+                failed_message_idx: nil
+              )
 
             {:error, :busy} ->
               # Agent is busy with another task — show a gentle warning
               socket
-              |> assign(streaming: false, streaming_content: "", failed_message_idx: nil)
+              |> assign(
+                streaming: false,
+                streaming_content: "",
+                streaming_agent: nil,
+                failed_message_idx: nil
+              )
               |> put_flash(:info, "Agent is busy — try again in a moment")
 
             {:error, reason} ->
@@ -2061,6 +2135,7 @@ defmodule LoomkinWeb.WorkspaceLive do
               |> assign(
                 streaming: false,
                 streaming_content: "",
+                streaming_agent: nil,
                 failed_message_idx: failed_idx,
                 messages: messages
               )
@@ -2757,13 +2832,13 @@ defmodule LoomkinWeb.WorkspaceLive do
             </span>
           </div>
           <select
-            :if={@child_teams != []}
+            :if={@team_tree != %{}}
             phx-change="switch_team"
             name="team-id"
             class="max-w-[8rem] truncate text-[11px] rounded-md px-1.5 py-0.5 focus:outline-none bg-surface-2 border border-subtle text-secondary"
           >
             <option
-              :for={tid <- [@team_id | @child_teams]}
+              :for={tid <- [@team_id | Map.values(@team_tree) |> List.flatten()]}
               value={tid}
               selected={tid == @active_team_id}
             >
@@ -2840,6 +2915,7 @@ defmodule LoomkinWeb.WorkspaceLive do
                 current_tool={@current_tool}
                 streaming={@streaming}
                 streaming_content={@streaming_content}
+                streaming_agent={@streaming_agent}
                 architect_phase={@architect_phase}
                 plan_steps={@plan_steps}
                 current_step={@current_step}
@@ -2921,6 +2997,7 @@ defmodule LoomkinWeb.WorkspaceLive do
                 current_tool={@current_tool}
                 streaming={@streaming}
                 streaming_content={@streaming_content}
+                streaming_agent={@streaming_agent}
                 architect_phase={@architect_phase}
                 plan_steps={@plan_steps}
                 current_step={@current_step}
@@ -4460,4 +4537,19 @@ defmodule LoomkinWeb.WorkspaceLive do
   end
 
   # agent_is_working?/2 moved to ComposerComponent
+
+  # --- Team tree helpers ---
+
+  # Collect all descendants of team_id from the tree map (recursive)
+  defp collect_descendants(tree, team_id) do
+    children = Map.get(tree, team_id, [])
+    Enum.flat_map(children, fn child -> [child | collect_descendants(tree, child)] end)
+  end
+
+  # Remove dissolved_id from tree: delete its key and remove from all parent lists
+  defp remove_from_tree(tree, dissolved_id) do
+    tree
+    |> Map.delete(dissolved_id)
+    |> Map.new(fn {parent, children} -> {parent, List.delete(children, dissolved_id)} end)
+  end
 end

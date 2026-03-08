@@ -1,5 +1,5 @@
 defmodule LoomkinWeb.WorkspaceLiveTreeTest do
-  use ExUnit.Case, async: true
+  use LoomkinWeb.ConnCase
 
   alias LoomkinWeb.WorkspaceLive
 
@@ -89,6 +89,7 @@ defmodule LoomkinWeb.WorkspaceLiveTreeTest do
         live_action: :show,
         team_id: team_id,
         active_team_id: team_id,
+        mode: :mission_control,
         team_tree: team_tree,
         team_names: team_names,
         subscribed_teams: subscribed_teams,

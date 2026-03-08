@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-03-08T21:51:28.791Z"
+stopped_at: Completed 08-03-PLAN.md
+last_updated: "2026-03-08T22:10:06.271Z"
 last_activity: 2026-03-08 — Distinct agent card controls with force-pause, dual indicator, steer-only resume, and state transition comms events
 progress:
   total_phases: 10
   completed_phases: 7
   total_plans: 35
-  completed_plans: 32
+  completed_plans: 33
   percent: 100
 ---
 
@@ -80,6 +80,7 @@ Progress: [██████████] 100%
 | Phase 07-confidence-triggers P04 | 10 | 2 tasks | 0 files |
 | Phase 08-dynamic-tree-visibility P01 | 8 | 2 tasks | 5 files |
 | Phase 08-dynamic-tree-visibility P02 | 5 | 2 tasks | 7 files |
+| Phase 08-dynamic-tree-visibility P03 | 14 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -147,6 +148,8 @@ Recent decisions affecting current work:
 - [Phase 08-01]: Wave 0 pattern reused exactly as established in Phase 5 and Phase 7 — @moduletag :skip at module level skips all tests in the file
 - [Phase 08-02]: ChildTeamCreated published from Manager.create_sub_team/3 after start_nervous_system, not from TeamSpawn tool — Manager is single canonical source
 - [Phase 08-02]: team.child.created added to @critical_types MapSet for O(1) lookup and instant delivery bypassing 50ms batch window
+- [Phase 08-03]: agent_pid = self() moved to top of on_tool_execute closure so both AskUser and TeamSpawn paths share it without redundant self() calls
+- [Phase 08-03]: terminate/2 uses try/catch :exit for Manager.dissolve_team; spawned_child_teams not restored on OTP restart — agent boots with [] and re-accumulates
 
 ### Pending Todos
 
@@ -161,6 +164,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-08T21:51:28.789Z
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-03-08T22:10:06.269Z
+Stopped at: Completed 08-03-PLAN.md
 Resume file: None

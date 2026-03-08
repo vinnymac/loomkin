@@ -244,6 +244,17 @@ defmodule Loomkin.Teams.Agent do
       "[Kin:agent] terminating name=#{state.name} team=#{state.team_id} reason=#{inspect(reason)}"
     )
 
+    # Dissolve all child teams spawned by this leader to prevent zombie teams after OTP restart
+    for child_team_id <- state.spawned_child_teams do
+      Logger.info("[Kin:agent] dissolving child team=#{child_team_id} on terminate")
+
+      try do
+        Manager.dissolve_team(child_team_id)
+      catch
+        :exit, _ -> :ok
+      end
+    end
+
     Comms.unsubscribe(state.subscription_ids)
   end
 

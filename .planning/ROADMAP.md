@@ -144,7 +144,13 @@ Plans:
   3. An agent cannot trigger more than one confidence-threshold question per five minutes regardless of how many uncertain decisions it encounters
   4. The human can dismiss a confidence-triggered question with "Let the team decide" and the agent proceeds autonomously using collective-decide fallback
   5. The confidence trigger pathway is wired from AgentLoop through the signal bus to AskUserComponent — not bypassing any existing component
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Wave 0: test stubs for rate-limit guard, batch routing, and cyan card behaviors
+- [ ] 07-02-PLAN.md — Agent GenServer: last_asked_at/pending_ask_user state, rate-limit handle_call, on_tool_execute intercept
+- [ ] 07-03-PLAN.md — UI: batched AskUser card panel (cyan), let_team_decide event, pending_questions batching in workspace_live
+- [ ] 07-04-PLAN.md — Gate: full suite green + visual verification checkpoint
 
 ### Phase 8: Dynamic Tree Visibility
 **Goal**: Nested sub-teams at arbitrary depth auto-appear in the UI via recursive subscription, and the ChildTeamCreated signal is reliably published with leader ownership and proper termination on dissolve
@@ -192,7 +198,7 @@ Plans:
 | 4. Task Graph & Crash Recovery | 3/4 | Gap closure | - |
 | 5. Chat Injection & State Machines | 5/5 | Complete   | 2026-03-08 |
 | 6. Approval Gates | 5/5 | Complete   | 2026-03-08 |
-| 7. Confidence Triggers | 0/TBD | Not started | - |
+| 7. Confidence Triggers | 0/4 | Planned | - |
 | 8. Dynamic Tree Visibility | 0/TBD | Not started | - |
 | 9. Spawn Safety | 0/TBD | Not started | - |
 | 10. Leader Research Protocol | 0/TBD | Not started | - |

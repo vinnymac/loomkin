@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-03-08T21:44:13.413Z"
+stopped_at: Completed 08-02-PLAN.md
+last_updated: "2026-03-08T21:51:28.791Z"
 last_activity: 2026-03-08 — Distinct agent card controls with force-pause, dual indicator, steer-only resume, and state transition comms events
 progress:
   total_phases: 10
   completed_phases: 7
   total_plans: 35
-  completed_plans: 31
+  completed_plans: 32
   percent: 100
 ---
 
@@ -79,6 +79,7 @@ Progress: [██████████] 100%
 | Phase 07-confidence-triggers P04 | 4 | 1 tasks | 0 files |
 | Phase 07-confidence-triggers P04 | 10 | 2 tasks | 0 files |
 | Phase 08-dynamic-tree-visibility P01 | 8 | 2 tasks | 5 files |
+| Phase 08-dynamic-tree-visibility P02 | 5 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -144,6 +145,8 @@ Recent decisions affecting current work:
 - [Phase 07-confidence-triggers]: Google auth test failures are pre-existing env issues (real credentials in dev env) — out-of-scope for Phase 7
 - [Phase 07-04]: Human visually confirmed all confidence trigger ui behaviors: cyan pulsing dot, batched ask_user panel, let_team_decide resolution, and rate-limit drop — Phase 7 complete
 - [Phase 08-01]: Wave 0 pattern reused exactly as established in Phase 5 and Phase 7 — @moduletag :skip at module level skips all tests in the file
+- [Phase 08-02]: ChildTeamCreated published from Manager.create_sub_team/3 after start_nervous_system, not from TeamSpawn tool — Manager is single canonical source
+- [Phase 08-02]: team.child.created added to @critical_types MapSet for O(1) lookup and instant delivery bypassing 50ms batch window
 
 ### Pending Todos
 
@@ -158,6 +161,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-08T21:44:13.411Z
-Stopped at: Completed 08-01-PLAN.md
+Last session: 2026-03-08T21:51:28.789Z
+Stopped at: Completed 08-02-PLAN.md
 Resume file: None

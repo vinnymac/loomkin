@@ -993,6 +993,93 @@ defmodule LoomkinWeb.WorkspaceLive do
     {:noreply, enqueue_or_auto_respond(socket, agent_name, :any, tn, tp, source, tid)}
   end
 
+  # --- Approval Gate signals ---
+
+  def handle_info(%Jido.Signal{type: "agent.approval.requested"} = sig, socket) do
+    %{gate_id: gate_id, agent_name: agent_name, question: question, timeout_ms: timeout_ms} =
+      sig.data
+
+    started_at = System.monotonic_time(:millisecond)
+
+    pending_approval = %{
+      gate_id: gate_id,
+      question: question,
+      timeout_ms: timeout_ms,
+      started_at: started_at
+    }
+
+    socket = update_agent_card(socket, agent_name, %{pending_approval: pending_approval})
+
+    role = get_in(socket.assigns, [:agent_cards, agent_name, :role])
+
+    socket =
+      if role == :lead do
+        assign(socket,
+          leader_approval_pending: %{
+            gate_id: gate_id,
+            timeout_ms: timeout_ms,
+            started_at: started_at
+          }
+        )
+      else
+        socket
+      end
+
+    event = %{
+      id: Ecto.UUID.generate(),
+      type: :approval_gate_requested,
+      agent: agent_name,
+      content: "#{agent_name} is requesting approval: #{question}",
+      timestamp: DateTime.utc_now(),
+      expanded: true,
+      metadata: %{gate_id: gate_id}
+    }
+
+    socket =
+      socket
+      |> stream_insert(:comms_events, event)
+      |> update(:comms_event_count, &(&1 + 1))
+
+    {:noreply, socket}
+  end
+
+  def handle_info(%Jido.Signal{type: "agent.approval.resolved"} = sig, socket) do
+    %{gate_id: gate_id, agent_name: agent_name, outcome: outcome} = sig.data
+
+    socket = update_agent_card(socket, agent_name, %{pending_approval: nil})
+
+    socket =
+      if socket.assigns.leader_approval_pending[:gate_id] == gate_id do
+        assign(socket, leader_approval_pending: nil)
+      else
+        socket
+      end
+
+    outcome_label =
+      case outcome do
+        :timeout -> "timed out"
+        :approved -> "approved"
+        :denied -> "denied"
+      end
+
+    event = %{
+      id: Ecto.UUID.generate(),
+      type: :approval_gate_resolved,
+      agent: agent_name,
+      content: "Approval gate #{outcome_label} by human",
+      timestamp: DateTime.utc_now(),
+      expanded: false,
+      metadata: %{gate_id: gate_id, outcome: outcome}
+    }
+
+    socket =
+      socket
+      |> stream_insert(:comms_events, event)
+      |> update(:comms_event_count, &(&1 + 1))
+
+    {:noreply, socket}
+  end
+
   def handle_info(%Jido.Signal{type: "team.dissolved"} = sig, socket) do
     %{team_id: tid} = sig.data
     handle_info({:team_dissolved, tid}, socket)

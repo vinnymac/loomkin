@@ -198,7 +198,7 @@ Plans:
 | 4. Task Graph & Crash Recovery | 3/4 | Gap closure | - |
 | 5. Chat Injection & State Machines | 5/5 | Complete   | 2026-03-08 |
 | 6. Approval Gates | 5/5 | Complete   | 2026-03-08 |
-| 7. Confidence Triggers | 0/4 | Planned | - |
+| 7. Confidence Triggers | 1/4 | In Progress|  |
 | 8. Dynamic Tree Visibility | 0/TBD | Not started | - |
 | 9. Spawn Safety | 0/TBD | Not started | - |
 | 10. Leader Research Protocol | 0/TBD | Not started | - |

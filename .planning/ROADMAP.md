@@ -15,7 +15,7 @@ and the leader research protocol. Each phase delivers one coherent, testable cap
 - [ ] **Phase 2: Signal Infrastructure** - TeamBroadcaster intermediary, Topics module, and subscription cleanup
 - [x] **Phase 3: Live Comms Feed** - Agent-to-agent messages visible in real-time for all teams including dynamic sub-teams (completed 2026-03-08)
 - [ ] **Phase 4: Task Graph & Crash Recovery** - Visual task dependency graph and OTP crash status reflected in UI (gap closure)
-- [x] **Phase 5: Chat Injection & State Machines** - Team-wide chat broadcast and typed pause/permission state machines (completed 2026-03-08)
+- [ ] **Phase 5: Chat Injection & State Machines** - Team-wide chat broadcast and typed pause/permission state machines (gap closure)
 - [ ] **Phase 6: Approval Gates** - Checkpoint-based approval gates distinct from permission hooks with high-visibility UI
 - [ ] **Phase 7: Confidence Triggers** - Agents auto-ask humans when uncertain via configurable threshold
 - [ ] **Phase 8: Dynamic Tree Visibility** - Nested sub-teams auto-appear in UI via recursive subscription
@@ -106,13 +106,14 @@ Plans:
   3. Pausing an agent that has a pending permission request does not clobber the permission — the permission must be resolved first
   4. Resuming a paused agent requires providing new guidance; approving a permission gate requires a yes/no for the specific tool call — the two UI controls are visually distinct
   5. Agent state correctly transitions through idle, running, paused, permission-pending, and approval-pending without any state being silently overwritten by another
-**Plans**: 4 plans
+**Plans**: 5 plans
 
 Plans:
 - [x] 05-00-PLAN.md — Wave 0: create test stub files for all Phase 5 test targets
 - [x] 05-01-PLAN.md — State machine guards: pause_queued, guard clauses, approval_pending pre-wire (TDD)
 - [x] 05-02-PLAN.md — Broadcast messaging: broadcast_mode, send_message branch, paused agent injection, composer indicator, comms types
-- [ ] 05-03-PLAN.md — UI wiring: distinct card controls, dual state indicator, force-pause, steer-only resume, visual verification
+- [x] 05-03-PLAN.md — UI wiring: distinct card controls, dual state indicator, force-pause, steer-only resume, visual verification
+- [ ] 05-04-PLAN.md — Gap closure: fix solo broadcast_mode default, implement integration test stubs
 
 ### Phase 6: Approval Gates
 **Goal**: Agents can pause at critical junctures and await human sign-off via a checkpoint-based approval gate that is visually and mechanically distinct from the existing permission hook system
@@ -182,7 +183,7 @@ Plans:
 | 2. Signal Infrastructure | 3/4 | Gap closure | - |
 | 3. Live Comms Feed | 2/2 | Complete   | 2026-03-08 |
 | 4. Task Graph & Crash Recovery | 3/4 | Gap closure | - |
-| 5. Chat Injection & State Machines | 4/4 | Complete   | 2026-03-08 |
+| 5. Chat Injection & State Machines | 4/5 | Gap closure | - |
 | 6. Approval Gates | 0/TBD | Not started | - |
 | 7. Confidence Triggers | 0/TBD | Not started | - |
 | 8. Dynamic Tree Visibility | 0/TBD | Not started | - |

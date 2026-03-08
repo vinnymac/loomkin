@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-03-08T18:48:47.394Z"
+stopped_at: Completed 06-03-PLAN.md
+last_updated: "2026-03-08T19:00:04.066Z"
 last_activity: 2026-03-08 — Distinct agent card controls with force-pause, dual indicator, steer-only resume, and state transition comms events
 progress:
   total_phases: 10
   completed_phases: 5
   total_plans: 25
-  completed_plans: 23
+  completed_plans: 24
   percent: 100
 ---
 
@@ -70,6 +70,7 @@ Progress: [██████████] 100%
 | Phase 05 P04 | 3 | 2 tasks | 3 files |
 | Phase 06 P01 | 2 | 2 tasks | 4 files |
 | Phase 06 P02 | 7 | 2 tasks | 6 files |
+| Phase 06 P03 | 8 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -120,6 +121,8 @@ Recent decisions affecting current work:
 - [Phase 06]: approval signal types agent.approval.requested and agent.approval.resolved classified as critical in TeamBroadcaster
 - [Phase 06]: approval gate tool blocks only the tool task process, not the agent GenServer, mirroring AskUser pattern
 - [Phase 06]: Resolved signal published on all three outcomes (approved/denied/timeout) so LiveView always receives gate close notification
+- [Phase 06]: approve handler clears leader_approval_pending only via deny — resolved signal clears it on the signal path
+- [Phase 06]: pending_approval cleared in both handle_event AND handle_info resolved to cover timeout path
 
 ### Pending Todos
 
@@ -134,6 +137,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-08T18:48:47.392Z
-Stopped at: Completed 06-02-PLAN.md
+Last session: 2026-03-08T19:00:04.065Z
+Stopped at: Completed 06-03-PLAN.md
 Resume file: None

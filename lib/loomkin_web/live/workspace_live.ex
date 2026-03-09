@@ -334,10 +334,47 @@ defmodule LoomkinWeb.WorkspaceLive do
 
   # --- Events ---
 
-  # focus_card_agent can arrive directly (from AgentCardComponent or AgentCommsComponent
-  # phx-click without phx-target) or forwarded via MissionControlPanelComponent.
+  # Card events can arrive directly (from AgentCardComponent phx-click without
+  # phx-target) or forwarded via MissionControlPanelComponent. Handle both paths.
   def handle_event("focus_card_agent", %{"agent" => agent_name}, socket) do
     send(self(), {:focus_agent, agent_name})
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "reply_to_card_agent",
+        %{"agent" => agent_name, "team-id" => team_id},
+        socket
+      ) do
+    send(self(), {:reply_to_agent, agent_name, team_id})
+    {:noreply, socket}
+  end
+
+  def handle_event("pause_card_agent", %{"agent" => agent_name, "team-id" => team_id}, socket) do
+    send(self(), {:pause_agent, agent_name, team_id})
+    {:noreply, socket}
+  end
+
+  def handle_event("steer_card_agent", %{"agent" => agent_name, "team-id" => team_id}, socket) do
+    send(self(), {:steer_agent, agent_name, team_id})
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "force_pause_card_agent",
+        %{"agent" => agent_name, "team-id" => team_id},
+        socket
+      ) do
+    case find_agent_pid(socket, agent_name, team_id) do
+      {:ok, pid} ->
+        Task.Supervisor.start_child(Loomkin.Teams.TaskSupervisor, fn ->
+          Loomkin.Teams.Agent.force_pause(pid)
+        end)
+
+      :error ->
+        :ok
+    end
+
     {:noreply, socket}
   end
 

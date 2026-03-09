@@ -238,7 +238,7 @@ Plans:
 | 8. Dynamic Tree Visibility | 4/5 | In Progress|  |
 | 9. Spawn Safety | 4/4 | Complete   | 2026-03-09 |
 | 10. Leader Research Protocol | 4/4 | Complete    | 2026-03-09 |
-| 11. Observability Completeness | 1/1 | Complete   | 2026-03-09 |
+| 11. Observability Completeness | 1/1 | Complete    | 2026-03-09 |
 
 ---
 *Roadmap created: 2026-03-07*

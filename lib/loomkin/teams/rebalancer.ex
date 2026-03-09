@@ -8,6 +8,8 @@ defmodule Loomkin.Teams.Rebalancer do
 
   use GenServer
 
+  alias Loomkin.Signals
+  alias Loomkin.Signals.Extensions.Causality
   alias Loomkin.Teams.Comms
   alias Loomkin.Teams.Context
 
@@ -156,21 +158,51 @@ defmodule Loomkin.Teams.Rebalancer do
     idle_min = div(idle_ms, 60_000)
 
     if nudge_count < @max_nudges do
+      new_count = nudge_count + 1
+
       nudge_msg =
         "You appear stuck (no activity for #{idle_min}m). " <>
           "Consider breaking down your current task, asking for help, or trying a different approach."
 
       Comms.send_to(state.team_id, agent_name, {:peer_message, "rebalancer", nudge_msg})
 
-      put_in(state.nudge_counts[agent_name], nudge_count + 1)
+      emit_rebalance_signal(state.team_id, %{
+        agent_name: agent_name,
+        event: :nudge,
+        idle_min: idle_min,
+        nudge_count: new_count,
+        max_nudges: @max_nudges
+      })
+
+      put_in(state.nudge_counts[agent_name], new_count)
     else
       current_task = find_agent_current_task(state.team_id, agent_name)
       task_info = if current_task, do: current_task.id, else: "unknown"
 
       Comms.broadcast(state.team_id, {:rebalance_needed, agent_name, task_info})
 
+      emit_rebalance_signal(state.team_id, %{
+        agent_name: agent_name,
+        event: :escalation,
+        idle_min: idle_min,
+        task_info: task_info
+      })
+
       put_in(state.nudge_counts[agent_name], 0)
     end
+  end
+
+  defp emit_rebalance_signal(team_id, metadata) do
+    signal =
+      Signals.Team.RebalanceNeeded.new!(%{
+        agent_name: to_string(metadata.agent_name),
+        task_info: to_string(metadata[:task_info] || ""),
+        team_id: team_id
+      })
+
+    %{signal | data: Map.merge(signal.data, metadata)}
+    |> Causality.attach(team_id: team_id)
+    |> Signals.publish()
   end
 
   defp find_agent_current_task(team_id, agent_name) do

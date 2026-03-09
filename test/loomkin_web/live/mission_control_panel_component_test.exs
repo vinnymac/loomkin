@@ -14,7 +14,8 @@ defmodule LoomkinWeb.MissionControlPanelComponentTest do
     cached_agents: [],
     active_team_id: "team-1",
     comms_stream: nil,
-    leader_approval_pending: nil
+    leader_approval_pending: nil,
+    collab_health: nil
   }
 
   test "renders waiting state when no agents" do
@@ -130,6 +131,50 @@ defmodule LoomkinWeb.MissionControlPanelComponentTest do
       html = render_component(LoomkinWeb.MissionControlPanelComponent, assigns)
       assert html =~ ~s(phx-hook="CountdownTimer")
       assert html =~ ~s(data-deadline-at="#{started_at + timeout_ms}")
+    end
+  end
+
+  describe "collaboration health indicator" do
+    test "does not render health indicator when collab_health is nil" do
+      html = render_component(LoomkinWeb.MissionControlPanelComponent, @base_assigns)
+      refute html =~ ~s(data-testid="collab-health-indicator")
+    end
+
+    test "renders health indicator when collab_health is set" do
+      assigns = Map.put(@base_assigns, :collab_health, 75)
+      html = render_component(LoomkinWeb.MissionControlPanelComponent, assigns)
+      assert html =~ ~s(data-testid="collab-health-indicator")
+      assert html =~ "75"
+    end
+
+    test "shows green bar for score >= 70" do
+      assigns = Map.put(@base_assigns, :collab_health, 85)
+      html = render_component(LoomkinWeb.MissionControlPanelComponent, assigns)
+      assert html =~ "bg-emerald-500"
+      assert html =~ "text-emerald-400"
+      assert html =~ ~s(width: 85%)
+    end
+
+    test "shows yellow bar for score 40-69" do
+      assigns = Map.put(@base_assigns, :collab_health, 55)
+      html = render_component(LoomkinWeb.MissionControlPanelComponent, assigns)
+      assert html =~ "bg-amber-400"
+      assert html =~ "text-amber-400"
+      assert html =~ ~s(width: 55%)
+    end
+
+    test "shows red bar for score < 40" do
+      assigns = Map.put(@base_assigns, :collab_health, 20)
+      html = render_component(LoomkinWeb.MissionControlPanelComponent, assigns)
+      assert html =~ "bg-red-500"
+      assert html =~ "text-red-400"
+      assert html =~ ~s(width: 20%)
+    end
+
+    test "tooltip shows score value" do
+      assigns = Map.put(@base_assigns, :collab_health, 72)
+      html = render_component(LoomkinWeb.MissionControlPanelComponent, assigns)
+      assert html =~ "Collaboration Health: 72/100"
     end
   end
 end

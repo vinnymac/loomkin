@@ -103,10 +103,15 @@ defmodule Loomkin.Teams.Comms do
     if agents == [] do
       broadcast_context(team_id, payload)
     else
-      relevant =
-        agents
-        |> Enum.reject(fn agent -> to_string(agent.name) == to_string(from) end)
-        |> RelevanceScorer.filter_relevant(payload, threshold)
+      other_agents = Enum.reject(agents, fn agent -> to_string(agent.name) == to_string(from) end)
+
+      all_scored =
+        Enum.map(other_agents, fn agent -> {agent, RelevanceScorer.score(payload, agent)} end)
+
+      {relevant, skipped} =
+        Enum.split_with(all_scored, fn {_agent, score} -> score >= threshold end)
+
+      relevant = Enum.sort_by(relevant, fn {_agent, s} -> s end, :desc)
 
       if relevant == [] do
         broadcast_context(team_id, payload)
@@ -114,6 +119,24 @@ defmodule Loomkin.Teams.Comms do
         Enum.each(relevant, fn {agent, _score} ->
           send_to(team_id, agent.name, {:context_update, from, payload})
         end)
+
+        # Emit a context.update signal with relevance metadata for UI visibility
+        recipients = Enum.map(relevant, fn {agent, score} -> {to_string(agent.name), score} end)
+        skipped_list = Enum.map(skipped, fn {agent, score} -> {to_string(agent.name), score} end)
+
+        signal =
+          Loomkin.Signals.Context.Update.new!(%{from: to_string(from), team_id: team_id})
+
+        %{
+          signal
+          | data:
+              Map.merge(signal.data, %{
+                payload: payload,
+                relevance: %{recipients: recipients, skipped: skipped_list}
+              })
+        }
+        |> Causality.attach(team_id: team_id, agent_name: to_string(from))
+        |> Signals.publish()
       end
     end
   end

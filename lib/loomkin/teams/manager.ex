@@ -184,6 +184,11 @@ defmodule Loomkin.Teams.Manager do
         do: Keyword.put(child_opts, :kin_agents, opts[:kin_agents]),
         else: child_opts
 
+    child_opts =
+      if opts[:session_id],
+        do: Keyword.put(child_opts, :session_id, opts[:session_id]),
+        else: child_opts
+
     result = Distributed.start_child({Loomkin.Teams.Agent, child_opts})
 
     case result do

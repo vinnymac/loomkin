@@ -57,8 +57,9 @@ defmodule LoomkinWeb.WorkspaceLive do
         # Command palette state is now owned by CommandPaletteComponent
         # Ask-user pending questions
         pending_questions: [],
-        # Collaboration health score (0-100)
+        # Collaboration health score (0-100) and periodic refresh timer
         collab_health: nil,
+        collab_health_timer: nil,
         # Channel bindings for the active team
         channel_bindings: [],
         # Track subscribed PubSub teams to prevent duplicate subscriptions
@@ -332,6 +333,13 @@ defmodule LoomkinWeb.WorkspaceLive do
   end
 
   # --- Events ---
+
+  # focus_card_agent can arrive directly (from AgentCardComponent or AgentCommsComponent
+  # phx-click without phx-target) or forwarded via MissionControlPanelComponent.
+  def handle_event("focus_card_agent", %{"agent" => agent_name}, socket) do
+    send(self(), {:focus_agent, agent_name})
+    {:noreply, socket}
+  end
 
   def handle_event("send_message", %{"text" => text}, socket) when text != "" do
     trimmed = String.trim(text)
@@ -1382,6 +1390,74 @@ defmodule LoomkinWeb.WorkspaceLive do
     handle_info({:queue_updated, agent_name, queue}, socket)
   end
 
+  # Rebalancer signals — stuck agent nudges and escalations
+  def handle_info(%Jido.Signal{type: "team.rebalance.needed"} = sig, socket) do
+    agent_name = to_string(sig.data[:agent_name] || "unknown")
+    event_type = sig.data[:event] || :escalation
+    idle_min = sig.data[:idle_min] || 0
+
+    {comms_type, content} =
+      case event_type do
+        :nudge ->
+          nudge_count = sig.data[:nudge_count] || 1
+          max_nudges = sig.data[:max_nudges] || 2
+
+          {:rebalance_nudge,
+           "#{agent_name} stuck for #{idle_min}m — nudge #{nudge_count}/#{max_nudges}"}
+
+        _escalation ->
+          task_info = sig.data[:task_info]
+          task_suffix = if task_info && task_info != "", do: " (task: #{task_info})", else: ""
+
+          {:rebalance_escalation,
+           "#{agent_name} stuck for #{idle_min}m — escalating#{task_suffix}"}
+      end
+
+    comms_event = %{
+      id: Ecto.UUID.generate(),
+      type: comms_type,
+      agent: agent_name,
+      content: content,
+      timestamp: DateTime.utc_now(),
+      expanded: false,
+      metadata: %{
+        team_id: sig.data[:team_id],
+        idle_min: idle_min,
+        event: event_type,
+        nudge_count: sig.data[:nudge_count],
+        max_nudges: sig.data[:max_nudges],
+        task_info: sig.data[:task_info]
+      }
+    }
+
+    # Set stuck_warning on the agent card
+    card_updates =
+      case event_type do
+        :nudge ->
+          %{
+            stuck_warning: true,
+            stuck_idle_min: idle_min,
+            stuck_nudge_count: sig.data[:nudge_count] || 1,
+            stuck_max_nudges: sig.data[:max_nudges] || 2
+          }
+
+        _escalation ->
+          %{
+            stuck_warning: true,
+            stuck_idle_min: idle_min,
+            stuck_escalated: true
+          }
+      end
+
+    socket =
+      socket
+      |> update_agent_card(agent_name, card_updates)
+      |> stream_insert(:comms_events, comms_event)
+      |> update(:comms_event_count, &(&1 + 1))
+
+    {:noreply, socket}
+  end
+
   # Peer-to-peer agent messages — critical-priority delivery via TeamBroadcaster
   def handle_info(%Jido.Signal{type: "collaboration.peer.message"} = sig, socket) do
     agent = sig.data[:from] || "unknown"
@@ -1665,6 +1741,7 @@ defmodule LoomkinWeb.WorkspaceLive do
       )
       |> refresh_roster()
       |> sync_cards_with_roster()
+      |> schedule_collab_health_refresh()
 
     Logger.info(
       "[Kin:UI] :team_available complete — cards=#{inspect(Map.keys(socket.assigns.agent_cards))}"
@@ -1965,11 +2042,15 @@ defmodule LoomkinWeb.WorkspaceLive do
         if t.id == task_id, do: t.title
       end)
 
+    # Enrich with capability reasoning for smart assignment transparency
+    team_id = socket.assigns[:active_team_id]
+    enriched_event = enrich_task_assigned(event, task_title, team_id)
+
     socket =
       socket
       |> schedule_roster_refresh()
-      |> forward_to_activity(event)
-      |> forward_to_cards_and_comms(event)
+      |> forward_to_activity(enriched_event)
+      |> forward_to_cards_and_comms(enriched_event)
       |> update_card_task(agent_name, task_title)
       |> refresh_task_graph()
 
@@ -2550,6 +2631,19 @@ defmodule LoomkinWeb.WorkspaceLive do
     {:noreply, socket |> forward_to_activity(event) |> forward_to_cards_and_comms(event)}
   end
 
+  # Periodic collaboration health score refresh (every 10s while session active)
+  def handle_info(:refresh_collab_health, socket) do
+    socket =
+      if team_id = socket.assigns[:team_id] do
+        score = Loomkin.Teams.CollaborationMetrics.collaboration_score(team_id)
+        assign(socket, collab_health: score)
+      else
+        socket
+      end
+
+    {:noreply, schedule_collab_health_refresh(socket)}
+  end
+
   # OAuth auth status changed — refresh model selector to reflect new provider availability
   def handle_info({:auth_connected, _provider}, socket) do
     {:noreply, send_update_to_model_selector(socket)}
@@ -3119,7 +3213,7 @@ defmodule LoomkinWeb.WorkspaceLive do
           />
         <% else %>
           <%!-- Mission Control Left: Agent Cards + Comms + Composer --%>
-          <div class="flex-1 flex flex-col min-w-0 min-h-0 border-r border-subtle">
+          <div class="flex-1 flex flex-col min-w-0 min-h-0 border-r border-subtle overflow-hidden">
             <.live_component
               module={LoomkinWeb.MissionControlPanelComponent}
               id="mission-control-panel"
@@ -3133,10 +3227,11 @@ defmodule LoomkinWeb.WorkspaceLive do
               cached_agents={@cached_agents}
               active_team_id={@active_team_id}
               leader_approval_pending={@leader_approval_pending}
+              collab_health={@collab_health}
             />
 
             <%!-- Chat + Composer column --%>
-            <div class="flex-1 flex flex-col min-w-0 min-h-0 border-r border-subtle">
+            <div class="flex-shrink-0 flex flex-col min-w-0 border-r border-subtle">
               <div class="flex-1 overflow-auto min-h-0">
                 <.live_component
                   module={LoomkinWeb.ChatComponent}
@@ -3525,6 +3620,17 @@ defmodule LoomkinWeb.WorkspaceLive do
     socket
   end
 
+  @collab_health_interval_ms 10_000
+
+  defp schedule_collab_health_refresh(socket) do
+    if timer = socket.assigns[:collab_health_timer] do
+      Process.cancel_timer(timer)
+    end
+
+    timer = Process.send_after(self(), :refresh_collab_health, @collab_health_interval_ms)
+    assign(socket, collab_health_timer: timer)
+  end
+
   defp schedule_roster_refresh(socket) do
     require Logger
     Logger.debug("[Kin:UI] roster refresh scheduled (debounced #{@roster_debounce_ms}ms)")
@@ -3874,6 +3980,30 @@ defmodule LoomkinWeb.WorkspaceLive do
     }
   end
 
+  defp activity_event_from({:task_assigned_enriched, _task_id, agent, reasoning}) do
+    content =
+      case reasoning do
+        %{reason: reason} when is_binary(reason) and byte_size(reason) > 0 ->
+          "Assigned: #{reason}"
+
+        %{task_title: title} when is_binary(title) ->
+          "Picked up: #{title}"
+
+        _ ->
+          "Picked up a task"
+      end
+
+    %{
+      id: Ecto.UUID.generate(),
+      type: :task_assigned,
+      agent: agent,
+      content: content,
+      timestamp: DateTime.utc_now(),
+      expanded: false,
+      metadata: reasoning
+    }
+  end
+
   defp activity_event_from({:task_assigned, _task_id, agent}) do
     %{
       id: Ecto.UUID.generate(),
@@ -3943,6 +4073,14 @@ defmodule LoomkinWeb.WorkspaceLive do
         _ -> "Shared a discovery"
       end
 
+    # Extract nested payload for relevance (signal data wraps original payload)
+    inner = payload[:payload] || payload
+    relevance = payload[:relevance]
+
+    metadata =
+      %{discovery_type: to_string(inner[:type] || "discovery")}
+      |> then(fn m -> if relevance, do: Map.put(m, :relevance, relevance), else: m end)
+
     %{
       id: Ecto.UUID.generate(),
       type: :discovery,
@@ -3950,7 +4088,7 @@ defmodule LoomkinWeb.WorkspaceLive do
       content: content,
       timestamp: DateTime.utc_now(),
       expanded: false,
-      metadata: %{}
+      metadata: metadata
     }
   end
 
@@ -4025,11 +4163,36 @@ defmodule LoomkinWeb.WorkspaceLive do
     }
   end
 
+  defp activity_event_from({:collab_event, %{type: :conflict_detected} = payload}) do
+    agent =
+      case payload.agents do
+        [first | _] -> first
+        _ -> "system"
+      end
+
+    meta = payload.metadata || %{}
+
+    %{
+      id: Ecto.UUID.generate(),
+      type: :conflict,
+      agent: agent,
+      content: payload.description,
+      timestamp: payload.timestamp,
+      expanded: false,
+      metadata: %{
+        collab_type: :conflict_detected,
+        conflict_type: meta[:conflict_type],
+        agent_a: meta[:agent_a],
+        agent_b: meta[:agent_b],
+        files: meta[:files] || []
+      }
+    }
+  end
+
   defp activity_event_from({:collab_event, payload}) do
     # Map collab event type to an activity event type for styling
     event_type =
       case payload.type do
-        :conflict_detected -> :error
         :consensus_reached -> :decision
         :consensus_success -> :decision
         :consensus_deadlock -> :error
@@ -4075,7 +4238,10 @@ defmodule LoomkinWeb.WorkspaceLive do
     :task_created,
     :task_assigned,
     :task_complete,
-    :error
+    :error,
+    :rebalance_nudge,
+    :rebalance_escalation,
+    :conflict
   ]
 
   defp forward_to_cards_and_comms(socket, pubsub_event) do
@@ -4098,6 +4264,7 @@ defmodule LoomkinWeb.WorkspaceLive do
       end
 
     # Tool calls update only the last_tool footer — never overwrite message/thinking content
+    # Conflict events set the conflict flag on both agents' cards
     case event.type do
       :tool_call ->
         update_agent_card(socket, event.agent, %{
@@ -4106,6 +4273,17 @@ defmodule LoomkinWeb.WorkspaceLive do
             target: (event.metadata || %{})[:file_path]
           }
         })
+
+      :conflict ->
+        meta = event.metadata || %{}
+        conflict_info_a = %{with: meta[:agent_b], type: meta[:conflict_type]}
+        conflict_info_b = %{with: meta[:agent_a], type: meta[:conflict_type]}
+
+        socket
+        |> update_agent_card(to_string(meta[:agent_a] || event.agent), %{
+          conflict: conflict_info_a
+        })
+        |> update_agent_card(to_string(meta[:agent_b] || ""), %{conflict: conflict_info_b})
 
       _ ->
         socket
@@ -4206,11 +4384,57 @@ defmodule LoomkinWeb.WorkspaceLive do
 
     extra = Map.put(extra, :pause_queued, metadata[:pause_queued] || false)
 
+    # Clear stuck warning and conflict indicator when agent resumes activity
+    extra =
+      if status in [:working, :idle] do
+        Map.merge(extra, %{
+          stuck_warning: false,
+          stuck_idle_min: nil,
+          stuck_nudge_count: nil,
+          stuck_max_nudges: nil,
+          stuck_escalated: nil,
+          conflict: nil
+        })
+      else
+        extra
+      end
+
     update_agent_card(
       socket,
       agent_name,
       Map.merge(%{status: status, updated_at: DateTime.utc_now()}, extra)
     )
+  end
+
+  defp enrich_task_assigned({:task_assigned, task_id, agent_name}, task_title, team_id) do
+    task_type = Loomkin.Teams.Capabilities.infer_task_type(task_title)
+    ranked = Loomkin.Teams.Capabilities.best_agent_for(team_id, task_type)
+
+    chosen = Enum.find(ranked, fn entry -> entry.agent == agent_name end)
+    alternatives = Enum.reject(ranked, fn entry -> entry.agent == agent_name end)
+
+    reasoning = %{
+      task_title: task_title,
+      task_type: task_type,
+      chosen_score: if(chosen, do: Float.round(chosen.score, 2), else: nil),
+      chosen_stats: if(chosen, do: chosen.stats, else: nil),
+      alternatives:
+        alternatives
+        |> Enum.take(3)
+        |> Enum.map(fn entry ->
+          %{agent: entry.agent, score: Float.round(entry.score, 2), stats: entry.stats}
+        end),
+      reason:
+        if chosen && chosen.score > 0 do
+          total = chosen.stats.successes + chosen.stats.failures
+
+          "Best at #{task_type} (score: #{Float.round(chosen.score, 2)}, #{chosen.stats.successes}/#{total} success)"
+        else
+          nil
+        end
+    }
+
+    {:task_assigned_enriched, task_id, agent_name, reasoning}
   end
 
   defp update_card_task(socket, agent_name, task_desc) do

@@ -2301,7 +2301,7 @@ defmodule Loomkin.Teams.Agent do
   end
 
   defp run_research_spawn(agent_pid, tool_module, tool_args, context, team_id, agent_name) do
-    roles = Map.get(tool_args, "roles", Map.get(tool_args, :roles, []))
+    roles = tool_args |> Map.get("roles", Map.get(tool_args, :roles, [])) |> atomize_role_keys()
     estimated_cost = estimate_spawn_cost(roles)
     researcher_count = length(roles)
 
@@ -2370,7 +2370,7 @@ defmodule Loomkin.Teams.Agent do
          team_id,
          agent_name
        ) do
-    roles = Map.get(tool_args, "roles", Map.get(tool_args, :roles, []))
+    roles = tool_args |> Map.get("roles", Map.get(tool_args, :roles, [])) |> atomize_role_keys()
     estimated_cost = estimate_spawn_cost(roles)
 
     # Step 2: guard against double-gate
@@ -2572,6 +2572,29 @@ defmodule Loomkin.Teams.Agent do
 
     result
   end
+
+  @string_to_atom_keys %{
+    "name" => :name,
+    "role" => :role,
+    "model" => :model,
+    "system_prompt" => :system_prompt,
+    "count" => :count
+  }
+
+  defp atomize_role_keys(roles) when is_list(roles) do
+    Enum.map(roles, fn
+      role when is_map(role) ->
+        Map.new(role, fn
+          {k, v} when is_binary(k) -> {Map.get(@string_to_atom_keys, k, k), v}
+          {k, v} -> {k, v}
+        end)
+
+      other ->
+        other
+    end)
+  end
+
+  defp atomize_role_keys(other), do: other
 
   defp estimate_spawn_cost(roles) when is_list(roles) do
     Enum.reduce(roles, 0.0, fn role, acc ->

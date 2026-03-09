@@ -171,6 +171,20 @@ defmodule LoomkinWeb.AgentCardComponent do
                 {"#{@card[:crash_count]}x crashed"}
               </span>
               <span
+                :if={@card[:stuck_warning]}
+                class="ml-1 px-1 py-0.5 text-[8px] font-mono bg-amber-900/50 text-amber-300 rounded animate-pulse"
+                title={stuck_tooltip(@card)}
+              >
+                {stuck_label(@card)}
+              </span>
+              <span
+                :if={@card[:conflict]}
+                class="ml-1 px-1 py-0.5 text-[8px] font-mono bg-red-900/50 text-red-300 rounded animate-pulse"
+                title={conflict_tooltip(@card)}
+              >
+                {conflict_label(@card)}
+              </span>
+              <span
                 :if={@card[:pause_queued]}
                 class="ml-1 px-1 py-0.5 text-[8px] font-mono bg-blue-900/50 text-blue-300 rounded animate-pulse"
               >
@@ -306,10 +320,10 @@ defmodule LoomkinWeb.AgentCardComponent do
             <% :last_thinking -> %>
               <div
                 class={[
-                  "text-xs leading-relaxed opacity-30 agent-card-content pl-2",
+                  "text-xs leading-relaxed opacity-60 agent-card-content pl-2",
                   !@focused && "line-clamp-3"
                 ]}
-                style={"color: var(--text-muted); border-left: 1px solid #{@agent_color}15;"}
+                style={"color: var(--text-secondary); border-left: 1px solid #{@agent_color}30;"}
               >
                 {@rendered_content}
               </div>
@@ -328,7 +342,7 @@ defmodule LoomkinWeb.AgentCardComponent do
                 <% @rendered_last_response -> %>
                   <div
                     class={[
-                      "text-xs leading-relaxed opacity-40 agent-card-content",
+                      "text-xs leading-relaxed opacity-60 agent-card-content",
                       !@focused && "line-clamp-3"
                     ]}
                     style="color: var(--text-secondary);"
@@ -744,6 +758,60 @@ defmodule LoomkinWeb.AgentCardComponent do
   defp status_label(:recovering), do: "Recovering"
   defp status_label(:permanently_failed), do: "Failed (max restarts)"
   defp status_label(_), do: "Unknown"
+
+  # --- Stuck warning helpers ---
+
+  defp stuck_label(card) do
+    idle_min = card[:stuck_idle_min] || 0
+
+    cond do
+      card[:stuck_escalated] ->
+        "stuck #{idle_min}m — escalated"
+
+      card[:stuck_nudge_count] ->
+        "stuck #{idle_min}m — nudge #{card[:stuck_nudge_count]}/#{card[:stuck_max_nudges] || 2}"
+
+      true ->
+        "stuck #{idle_min}m"
+    end
+  end
+
+  defp stuck_tooltip(card) do
+    idle_min = card[:stuck_idle_min] || 0
+
+    cond do
+      card[:stuck_escalated] ->
+        "Agent stuck for #{idle_min} minutes. Max nudges reached — escalated to team lead."
+
+      card[:stuck_nudge_count] ->
+        "Agent stuck for #{idle_min} minutes. Nudged #{card[:stuck_nudge_count]} of #{card[:stuck_max_nudges] || 2} times."
+
+      true ->
+        "Agent stuck for #{idle_min} minutes."
+    end
+  end
+
+  # --- Conflict indicator helpers ---
+
+  defp conflict_label(card) do
+    case card[:conflict] do
+      %{type: type} when type in [:file_conflict, :file] -> "file conflict"
+      %{type: type} when type in [:approach_conflict, :approach] -> "approach conflict"
+      %{type: type} when type in [:decision_conflict, :decision] -> "decision conflict"
+      _ -> "conflict"
+    end
+  end
+
+  defp conflict_tooltip(card) do
+    case card[:conflict] do
+      %{with: other, type: type} when is_binary(other) and other != "" ->
+        type_str = type |> to_string() |> String.replace("_", " ")
+        "#{type_str} with #{other}"
+
+      _ ->
+        "Conflict detected"
+    end
+  end
 
   # --- Capability bars ---
 

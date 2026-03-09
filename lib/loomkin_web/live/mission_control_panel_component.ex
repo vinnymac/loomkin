@@ -21,6 +21,7 @@ defmodule LoomkinWeb.MissionControlPanelComponent do
     - comms_stream              the @streams.comms_events value (may be nil in tests)
     - leader_approval_pending   map | nil — set when lead agent awaits sign-off
                                 shape: %{gate_id, question, started_at, timeout_ms}
+    - collab_health             integer (0-100) | nil — collaboration health score
   """
 
   use LoomkinWeb, :live_component
@@ -118,7 +119,7 @@ defmodule LoomkinWeb.MissionControlPanelComponent do
         </div>
 
         <%!-- Team Agents Section --%>
-        <div class="flex-shrink-0 p-3 pb-0">
+        <div class="flex-shrink p-3 pb-0 overflow-y-auto max-h-[50%] min-h-[120px]">
           <div class="flex items-center gap-2 mb-2">
             <div class="flex items-center gap-1.5">
               <svg class="w-3.5 h-3.5 text-muted" viewBox="0 0 20 20" fill="currentColor">
@@ -130,6 +131,7 @@ defmodule LoomkinWeb.MissionControlPanelComponent do
               {length(@worker_card_names)}
             </span>
             <div class="flex-1 h-px bg-border-subtle"></div>
+            {render_collab_health(assigns)}
           </div>
 
           <%!-- Waiting state: session exists but agents haven't spawned yet --%>
@@ -187,7 +189,7 @@ defmodule LoomkinWeb.MissionControlPanelComponent do
 
         <%!-- Comms Feed (scrollable, takes remaining space) --%>
         <%= if @comms_stream do %>
-          <div class="flex-1 overflow-auto min-h-0 border-t border-subtle">
+          <div class="flex-1 overflow-auto min-h-[200px] border-t border-subtle">
             <LoomkinWeb.AgentCommsComponent.comms_feed
               stream={@comms_stream}
               event_count={@comms_event_count}
@@ -211,41 +213,88 @@ defmodule LoomkinWeb.MissionControlPanelComponent do
     assigns = assign(assigns, dormant_kin: dormant_kin)
 
     ~H"""
-    <div :if={@dormant_kin != []} class="flex flex-wrap gap-2 mt-2">
-      <button
-        :for={kin <- @dormant_kin}
-        phx-click="spawn_dormant_kin"
-        phx-value-id={kin.id}
-        phx-target={@myself}
-        class="group flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-subtle transition-all hover:border-solid hover:bg-surface-2"
-        aria-label={"Spawn #{kin.display_name || kin.name}"}
-      >
-        <span
-          class="w-1.5 h-1.5 rounded-full opacity-50"
-          style={"background: #{kin_potency_color(kin.potency)};"}
-        />
-        <span class="text-xs font-medium opacity-60 group-hover:opacity-100 transition-opacity text-secondary">
-          {kin.display_name || kin.name}
-        </span>
-        <span class="text-[9px] px-1 py-0.5 rounded font-medium opacity-40 bg-brand-muted text-muted">
-          {format_agent_role(kin.role)}
-        </span>
-        <svg
-          class="w-3 h-3 opacity-0 group-hover:opacity-60 transition-opacity text-muted"
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          aria-hidden="true"
+    <%= if @dormant_kin != [] do %>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <button
+          :for={kin <- @dormant_kin}
+          phx-click="spawn_dormant_kin"
+          phx-value-id={kin.id}
+          phx-target={@myself}
+          class="group flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-subtle transition-all hover:border-solid hover:bg-surface-2"
+          aria-label={"Spawn #{kin.display_name || kin.name}"}
         >
-          <path
-            fill-rule="evenodd"
-            d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-            clip-rule="evenodd"
+          <span
+            class="w-1.5 h-1.5 rounded-full opacity-50"
+            style={"background: #{kin_potency_color(kin.potency)};"}
           />
-        </svg>
-      </button>
+          <span class="text-xs font-medium opacity-60 group-hover:opacity-100 transition-opacity text-secondary">
+            {kin.display_name || kin.name}
+          </span>
+          <span class="text-[9px] px-1 py-0.5 rounded font-medium opacity-40 bg-brand-muted text-muted">
+            {format_agent_role(kin.role)}
+          </span>
+          <svg
+            class="w-3 h-3 opacity-0 group-hover:opacity-60 transition-opacity text-muted"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </button>
+      </div>
+    <% else %>
+      <div
+        :if={@worker_card_names == []}
+        class="mt-2 rounded-lg border border-dashed border-subtle py-6 px-4 text-center"
+      >
+        <div class="text-muted text-xs">No kin specialists available yet</div>
+        <div class="text-[10px] mt-1 text-muted">
+          The concierge will spawn agents as needed
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp render_collab_health(assigns) do
+    ~H"""
+    <div
+      :if={@collab_health}
+      data-testid="collab-health-indicator"
+      class="flex items-center gap-1.5"
+      title={"Collaboration Health: #{@collab_health}/100"}
+    >
+      <div class="w-16 h-1.5 rounded-full bg-surface-2 overflow-hidden">
+        <div
+          class={[
+            "h-full rounded-full transition-all duration-500",
+            health_color_class(@collab_health)
+          ]}
+          style={"width: #{@collab_health}%"}
+        />
+      </div>
+      <span class={[
+        "text-[10px] tabular-nums font-medium",
+        health_text_class(@collab_health)
+      ]}>
+        {@collab_health}
+      </span>
     </div>
     """
   end
+
+  defp health_color_class(score) when score >= 70, do: "bg-emerald-500"
+  defp health_color_class(score) when score >= 40, do: "bg-amber-400"
+  defp health_color_class(_score), do: "bg-red-500"
+
+  defp health_text_class(score) when score >= 70, do: "text-emerald-400"
+  defp health_text_class(score) when score >= 40, do: "text-amber-400"
+  defp health_text_class(_score), do: "text-red-400"
 
   defp card_grid_cols(_), do: "grid-cols-2 lg:grid-cols-3"
 

@@ -46,6 +46,12 @@ defmodule LoomkinWeb.DecisionGraphComponent do
   # Pulse cache TTL in seconds
   @pulse_ttl_seconds 30
 
+  @decision_signals [
+    "decision.node.added",
+    "decision.pivot.created",
+    "decision.logged"
+  ]
+
   @impl true
   def mount(socket) do
     {:ok,
@@ -60,6 +66,8 @@ defmodule LoomkinWeb.DecisionGraphComponent do
        agent_filter: nil,
        new_node_ids: MapSet.new(),
        refresh_ref: nil,
+       reload_timer: nil,
+       subscribed: false,
        svg_width: 800,
        svg_height: 400
      )}
@@ -72,6 +80,15 @@ defmodule LoomkinWeb.DecisionGraphComponent do
     prev_refresh_ref = socket.assigns[:refresh_ref]
 
     socket = assign(socket, assigns)
+
+    # Subscribe to decision signals once (double-subscription guard)
+    socket =
+      if !socket.assigns[:subscribed] do
+        Enum.each(@decision_signals, &Loomkin.Signals.subscribe/1)
+        assign(socket, :subscribed, true)
+      else
+        socket
+      end
 
     session_id = socket.assigns[:session_id]
     team_id = socket.assigns[:team_id]
@@ -94,6 +111,49 @@ defmodule LoomkinWeb.DecisionGraphComponent do
       true ->
         {:ok, socket}
     end
+  end
+
+  # --- Signal handlers (debounced reload) ---
+
+  def handle_info(%Jido.Signal{type: "decision.node.added", data: data}, socket) do
+    if data[:team_id] == socket.assigns[:team_id] do
+      {:noreply, schedule_reload(socket)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(%Jido.Signal{type: "decision.pivot.created", data: data}, socket) do
+    if data[:team_id] == socket.assigns[:team_id] do
+      {:noreply, schedule_reload(socket)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(%Jido.Signal{type: "decision.logged", data: data}, socket) do
+    if data[:team_id] == socket.assigns[:team_id] do
+      {:noreply, schedule_reload(socket)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(:reload_graph_data, socket) do
+    prev_node_ids = MapSet.new(socket.assigns.nodes, & &1.id)
+
+    case do_load_graph(
+           socket |> assign(:reload_timer, nil),
+           socket.assigns[:session_id],
+           socket.assigns[:team_id],
+           prev_node_ids
+         ) do
+      {:ok, socket} -> {:noreply, socket}
+    end
+  end
+
+  def handle_info(_msg, socket) do
+    {:noreply, socket}
   end
 
   defp do_load_graph(socket, session_id, team_id, prev_node_ids) do
@@ -718,6 +778,15 @@ defmodule LoomkinWeb.DecisionGraphComponent do
       svg_width: max(svg_w, 400),
       svg_height: max(svg_h, 200)
     )
+  end
+
+  defp schedule_reload(socket) do
+    if timer = socket.assigns[:reload_timer] do
+      Process.cancel_timer(timer)
+    end
+
+    timer = Process.send_after(self(), :reload_graph_data, 500)
+    assign(socket, :reload_timer, timer)
   end
 
   defp apply_agent_filter(nodes, edges, nil), do: {nodes, edges}

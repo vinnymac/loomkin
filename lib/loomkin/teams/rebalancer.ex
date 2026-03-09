@@ -142,13 +142,18 @@ defmodule Loomkin.Teams.Rebalancer do
     now = System.monotonic_time(:millisecond)
 
     Enum.reduce(state.working_since, state, fn {agent_name, working_since}, acc ->
-      last_activity = Map.get(acc.last_activity, agent_name, working_since)
-      idle_ms = now - last_activity
-
-      if idle_ms > @stuck_threshold_ms do
-        handle_stuck_agent(acc, agent_name, idle_ms)
-      else
+      # Weaver cycles intentionally with idle pauses; never flag as stuck
+      if agent_name == "weaver" do
         acc
+      else
+        last_activity = Map.get(acc.last_activity, agent_name, working_since)
+        idle_ms = now - last_activity
+
+        if idle_ms > @stuck_threshold_ms do
+          handle_stuck_agent(acc, agent_name, idle_ms)
+        else
+          acc
+        end
       end
     end)
   end

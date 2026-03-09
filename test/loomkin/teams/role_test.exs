@@ -32,6 +32,10 @@ defmodule Loomkin.Teams.RoleTest do
       assert {:ok, %Role{name: :orienter}} = Role.get(:orienter)
     end
 
+    test "returns :weaver role with correct config" do
+      assert {:ok, %Role{name: :weaver}} = Role.get(:weaver)
+    end
+
     test "returns error for unknown role" do
       assert {:error, :unknown_role} = Role.get(:nonexistent)
     end
@@ -102,6 +106,42 @@ defmodule Loomkin.Teams.RoleTest do
       refute Loomkin.Tools.FileEdit in tester.tools
       refute Loomkin.Tools.Git in tester.tools
     end
+
+    test "weaver has coordination tools but no file read/write/exec tools" do
+      {:ok, weaver} = Role.get(:weaver)
+
+      # Coordination tools present
+      assert Loomkin.Tools.PeerMessage in weaver.tools
+      assert Loomkin.Tools.PeerDiscovery in weaver.tools
+      assert Loomkin.Tools.PeerAskQuestion in weaver.tools
+      assert Loomkin.Tools.PeerAnswerQuestion in weaver.tools
+      assert Loomkin.Tools.PeerForwardQuestion in weaver.tools
+      assert Loomkin.Tools.PeerCreateTask in weaver.tools
+      assert Loomkin.Tools.PeerCompleteTask in weaver.tools
+      assert Loomkin.Tools.ContextRetrieve in weaver.tools
+      assert Loomkin.Tools.SearchKeepers in weaver.tools
+      assert Loomkin.Tools.ContextOffload in weaver.tools
+      assert Loomkin.Tools.DecisionLog in weaver.tools
+      assert Loomkin.Tools.DecisionQuery in weaver.tools
+      assert Loomkin.Tools.MergeGraph in weaver.tools
+      assert Loomkin.Tools.GenerateWriteup in weaver.tools
+      assert Loomkin.Tools.TeamProgress in weaver.tools
+      assert Loomkin.Tools.ListTeams in weaver.tools
+      assert Loomkin.Tools.CrossTeamQuery in weaver.tools
+      assert Loomkin.Tools.CollectiveDecision in weaver.tools
+      assert Loomkin.Tools.AskUser in weaver.tools
+
+      # No file read/write/exec tools
+      refute Loomkin.Tools.FileRead in weaver.tools
+      refute Loomkin.Tools.FileWrite in weaver.tools
+      refute Loomkin.Tools.FileEdit in weaver.tools
+      refute Loomkin.Tools.FileSearch in weaver.tools
+      refute Loomkin.Tools.ContentSearch in weaver.tools
+      refute Loomkin.Tools.DirectoryList in weaver.tools
+      refute Loomkin.Tools.Shell in weaver.tools
+      refute Loomkin.Tools.Git in weaver.tools
+      refute Loomkin.Tools.SubAgent in weaver.tools
+    end
   end
 
   describe "model_for_tier/1" do
@@ -126,9 +166,9 @@ defmodule Loomkin.Teams.RoleTest do
   end
 
   describe "built_in_roles/0" do
-    test "lists all seven built-in roles" do
+    test "lists all eight built-in roles" do
       roles = Role.built_in_roles()
-      assert length(roles) == 7
+      assert length(roles) == 8
       assert :lead in roles
       assert :researcher in roles
       assert :coder in roles
@@ -136,6 +176,7 @@ defmodule Loomkin.Teams.RoleTest do
       assert :tester in roles
       assert :concierge in roles
       assert :orienter in roles
+      assert :weaver in roles
     end
   end
 
@@ -181,7 +222,9 @@ defmodule Loomkin.Teams.RoleTest do
 
   describe "uniform model default" do
     test "most built-in roles use :default model_tier" do
-      for role_name <- Role.built_in_roles(), role_name != :orienter do
+      fast_roles = [:orienter, :weaver]
+
+      for role_name <- Role.built_in_roles(), role_name not in fast_roles do
         {:ok, role} = Role.get(role_name)
 
         assert role.model_tier == :default,
@@ -191,6 +234,11 @@ defmodule Loomkin.Teams.RoleTest do
 
     test "orienter uses :fast model_tier" do
       {:ok, role} = Role.get(:orienter)
+      assert role.model_tier == :fast
+    end
+
+    test "weaver uses :fast model_tier" do
+      {:ok, role} = Role.get(:weaver)
       assert role.model_tier == :fast
     end
   end
@@ -272,6 +320,82 @@ defmodule Loomkin.Teams.RoleTest do
       role = Role.from_config(:direct, config)
 
       assert role.tools == [Loomkin.Tools.FileRead, Loomkin.Tools.Git]
+    end
+  end
+
+  describe "weaver role" do
+    test "weaver system prompt contains key identity phrases" do
+      {:ok, weaver} = Role.get(:weaver)
+      assert weaver.system_prompt =~ "knowledge coordinator"
+      assert weaver.system_prompt =~ "proactive"
+      assert weaver.system_prompt =~ "duplicate"
+    end
+
+    test "weaver uses :cot reasoning strategy" do
+      {:ok, weaver} = Role.get(:weaver)
+      assert weaver.reasoning_strategy == :cot
+    end
+
+    test "weaver has exactly 19 tools" do
+      {:ok, weaver} = Role.get(:weaver)
+      assert length(weaver.tools) == 19
+    end
+  end
+
+  describe "communication graph" do
+    test "append_context_awareness includes Communication Priority section for specialists" do
+      for role_name <- [:researcher, :coder, :reviewer, :tester, :lead, :weaver, :concierge] do
+        {:ok, role} = Role.get(role_name)
+
+        assert role.system_prompt =~ "### Communication Priority",
+               "Expected #{role_name} prompt to include Communication Priority section"
+
+        assert role.system_prompt =~ "Keep close tabs with",
+               "Expected #{role_name} prompt to include 'Keep close tabs with'"
+      end
+    end
+
+    test "orienter has Communication Priority section" do
+      {:ok, orienter} = Role.get(:orienter)
+      assert orienter.system_prompt =~ "### Communication Priority"
+    end
+
+    test "researcher prompt mentions coder and weaver as primary contacts" do
+      {:ok, researcher} = Role.get(:researcher)
+      assert researcher.system_prompt =~ "**Keep close tabs with:** coder, weaver"
+    end
+
+    test "coder prompt mentions researcher and reviewer as primary contacts" do
+      {:ok, coder} = Role.get(:coder)
+      assert coder.system_prompt =~ "**Keep close tabs with:** researcher, reviewer"
+    end
+
+    test "weaver prompt mentions researcher and coder as primary contacts" do
+      {:ok, weaver} = Role.get(:weaver)
+      assert weaver.system_prompt =~ "**Keep close tabs with:** researcher, coder"
+    end
+
+    test "communication graph entries exist for all built-in roles" do
+      for role_name <- Role.built_in_roles() do
+        {:ok, role} = Role.get(role_name)
+
+        assert role.system_prompt =~ "### Communication Priority",
+               "Expected #{role_name} to have a communication graph entry"
+      end
+    end
+
+    test "duplicate prevention included for specialists but not orienter" do
+      # Specialists should have duplicate prevention
+      for role_name <- [:researcher, :coder, :reviewer, :tester, :lead, :weaver, :concierge] do
+        {:ok, role} = Role.get(role_name)
+
+        assert role.system_prompt =~ "## Duplicate Work Prevention",
+               "Expected #{role_name} prompt to include Duplicate Work Prevention"
+      end
+
+      # Orienter should NOT have duplicate prevention
+      {:ok, orienter} = Role.get(:orienter)
+      refute orienter.system_prompt =~ "## Duplicate Work Prevention"
     end
   end
 end

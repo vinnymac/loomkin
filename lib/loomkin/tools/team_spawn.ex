@@ -1,14 +1,15 @@
 defmodule Loomkin.Tools.TeamSpawn do
   @moduledoc "Spawn a team with agents."
 
-  @valid_roles ~w(lead researcher coder reviewer tester concierge orienter)
+  @valid_roles ~w(lead researcher coder reviewer tester concierge orienter weaver)
 
   use Jido.Action,
     name: "team_spawn",
     description:
       "Create a new agent team and spawn agents with specified roles. " <>
         "Valid roles: researcher (read-only exploration), coder (implementation), " <>
-        "reviewer (code review), tester (run tests), lead (coordination). " <>
+        "reviewer (code review), tester (run tests), lead (coordination), " <>
+        "weaver (knowledge routing and context coordination). " <>
         "You MUST provide a roles list with name and role for each agent. " <>
         "Returns a team status summary with team_id and agent list.",
     schema: [
@@ -36,11 +37,13 @@ defmodule Loomkin.Tools.TeamSpawn do
 
   import Loomkin.Tool, only: [param!: 2, param: 2]
 
+  alias Loomkin.Teams.Agent
   alias Loomkin.Teams.Manager
 
   @impl true
   def run(params, context) do
     team_name = param!(params, :team_name)
+    purpose = param!(params, :purpose)
     project_path = param(params, :project_path) || param(context, :project_path)
     parent_team_id = param(context, :parent_team_id)
     session_id = param(context, :session_id)
@@ -51,6 +54,7 @@ defmodule Loomkin.Tools.TeamSpawn do
 
     spawn_from_roles(
       team_name,
+      purpose,
       roles,
       project_path,
       parent_team_id,
@@ -62,6 +66,7 @@ defmodule Loomkin.Tools.TeamSpawn do
 
   defp spawn_from_roles(
          team_name,
+         purpose,
          roles,
          project_path,
          parent_team_id,
@@ -106,6 +111,25 @@ defmodule Loomkin.Tools.TeamSpawn do
         end
       end)
 
+    # Build and send team manifest to each successfully spawned agent
+    successful_agents =
+      Enum.flat_map(spawn_results, fn
+        {:ok, name, role} -> [%{name: name, role: role}]
+        _ -> []
+      end)
+
+    Enum.each(successful_agents, fn %{name: spawned_name} ->
+      other_agents = Enum.reject(successful_agents, &(&1.name == spawned_name))
+
+      personal_manifest =
+        format_personal_manifest(spawned_name, team_name, purpose, other_agents)
+
+      case Manager.find_agent(team_id, spawned_name) do
+        {:ok, pid} -> Agent.peer_message(pid, "system", personal_manifest)
+        _ -> :ok
+      end
+    end)
+
     lines =
       Enum.map(spawn_results, fn
         {:ok, name, role} -> "  - #{name} (#{role}): spawned"
@@ -149,7 +173,11 @@ defmodule Loomkin.Tools.TeamSpawn do
           String.contains?(downcased, "investigat") or String.contains?(downcased, "document") ->
           :researcher
 
-        String.contains?(downcased, "lead") or String.contains?(downcased, "coordinat") ->
+        String.contains?(downcased, "weav") or String.contains?(downcased, "coordinat") or
+            String.contains?(downcased, "glue") ->
+          :weaver
+
+        String.contains?(downcased, "lead") ->
           :lead
 
         String.contains?(downcased, "concierge") or String.contains?(downcased, "host") ->
@@ -170,4 +198,27 @@ defmodule Loomkin.Tools.TeamSpawn do
   end
 
   defp resolve_role(_), do: nil
+
+  defp format_personal_manifest(my_name, team_name, purpose, teammates) do
+    teammate_lines =
+      Enum.map(teammates, fn %{name: name, role: role} ->
+        comm_hint = communication_hint(role)
+        "- **#{name}** (#{role})#{comm_hint}"
+      end)
+      |> Enum.join("\n")
+
+    """
+    [Team Briefing] You are #{my_name} in team "#{team_name}".
+    Purpose: #{purpose}
+
+    Your teammates:
+    #{teammate_lines}
+
+    Use peer_message to communicate. Check search_keepers for prior context before starting work.
+    """
+  end
+
+  defp communication_hint(:weaver), do: " — your knowledge coordinator, keep them updated"
+  defp communication_hint(:lead), do: " — your team lead"
+  defp communication_hint(_), do: ""
 end

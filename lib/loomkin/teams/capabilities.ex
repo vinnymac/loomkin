@@ -60,6 +60,8 @@ defmodule Loomkin.Teams.Capabilities do
     |> Enum.map(fn {{:capability, agent_name, _type}, stats} ->
       %{agent: agent_name, score: score(stats), stats: stats}
     end)
+    # Exclude coordination-only agents that can't do implementation work
+    |> Enum.reject(fn %{agent: name} -> name == "weaver" end)
     |> Enum.sort_by(& &1.score, :desc)
   rescue
     ArgumentError -> []

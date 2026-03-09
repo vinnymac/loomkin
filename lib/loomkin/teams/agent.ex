@@ -221,10 +221,10 @@ defmodule Loomkin.Teams.Agent do
         broadcast_team(state, {:agent_status, state.name, :idle})
         Logger.info("[Kin:agent] registered name=#{name} role=#{role} — broadcasting :idle")
 
-        if role == :orienter do
-          {:ok, state, {:continue, :auto_orient}}
-        else
-          {:ok, state}
+        cond do
+          role == :orienter -> {:ok, state, {:continue, :auto_orient}}
+          role == :weaver -> {:ok, state, {:continue, :auto_weave}}
+          true -> {:ok, state}
         end
 
       {:error, :unknown_role} ->
@@ -282,6 +282,49 @@ defmodule Loomkin.Teams.Agent do
     """
 
     messages = [%{role: :user, content: orientation_prompt}]
+    loop_opts = build_loop_opts(state)
+    snapshot = build_snapshot(state)
+
+    task =
+      Task.Supervisor.async_nolink(Loomkin.Teams.TaskSupervisor, fn ->
+        run_loop_with_escalation(messages, loop_opts, snapshot)
+      end)
+
+    {:noreply, %{state | loop_task: {task, nil}, messages: messages}}
+  end
+
+  @impl true
+  def handle_continue(:auto_weave, state) do
+    Logger.info("[Kin:agent] weaver auto-weave starting team=#{state.team_id}")
+    state = set_status_and_broadcast(state, :working)
+
+    task_id = "weave_cycle_#{state.team_id}_#{System.monotonic_time()}"
+
+    Context.cache_task(state.team_id, task_id, %{
+      title: "coordination cycle",
+      status: :in_progress,
+      owner: state.name
+    })
+
+    state = %{state | task: %{id: task_id, title: "coordination cycle"}}
+
+    prompt = """
+    Begin your coordination cycle. Follow this protocol:
+
+    1. Use team_progress to see what all agents are working on
+    2. Use decision_query with type "pulse" to check decision graph health
+    3. Use search_keepers to build your picture of available knowledge
+    4. Identify any communication gaps, duplicate work risks, or knowledge routing needs
+    5. Take action: route knowledge, nudge silent agents, flag duplicates, bridge gaps
+    6. When you've addressed immediate needs, summarize what you did via peer_discovery
+
+    After each cycle, if agents are still active, continue monitoring.
+    You are the team's nervous system — stay aware and keep information flowing.
+    """
+
+    messages = state.messages ++ [%{role: :user, content: prompt}]
+    state = %{state | messages: messages}
+
     loop_opts = build_loop_opts(state)
     snapshot = build_snapshot(state)
 
@@ -1021,11 +1064,18 @@ defmodule Loomkin.Teams.Agent do
         state = track_usage(state, meta)
 
         # Orienter is one-shot: mark complete instead of idle after auto-orient
+        # Weaver stays idle and schedules next cycle
         state =
-          if state.role == :orienter and is_nil(from) do
-            set_status_and_broadcast(state, :complete)
-          else
-            set_status_and_broadcast(state, :idle)
+          cond do
+            state.role == :orienter and is_nil(from) ->
+              set_status_and_broadcast(state, :complete)
+
+            state.role == :weaver and is_nil(from) ->
+              maybe_schedule_weaver_cycle(state)
+              set_status_and_broadcast(state, :idle)
+
+            true ->
+              set_status_and_broadcast(state, :idle)
           end
 
         if from do
@@ -1065,11 +1115,18 @@ defmodule Loomkin.Teams.Agent do
         state = track_usage(state, meta)
 
         # Orienter is one-shot: mark complete instead of idle after auto-orient
+        # Weaver stays idle and schedules next cycle
         state =
-          if state.role == :orienter and is_nil(from) do
-            set_status_and_broadcast(state, :complete)
-          else
-            set_status_and_broadcast(state, :idle)
+          cond do
+            state.role == :orienter and is_nil(from) ->
+              set_status_and_broadcast(state, :complete)
+
+            state.role == :weaver and is_nil(from) ->
+              maybe_schedule_weaver_cycle(state)
+              set_status_and_broadcast(state, :idle)
+
+            true ->
+              set_status_and_broadcast(state, :idle)
           end
 
         if from do
@@ -1108,7 +1165,21 @@ defmodule Loomkin.Teams.Agent do
         end
 
         state = %{state | messages: msgs, loop_task: nil, task: nil}
-        state = set_status_and_broadcast(state, :idle)
+
+        state =
+          if state.role == :weaver do
+            failure_count = state.failure_count + 1
+            state = %{state | failure_count: failure_count}
+
+            if failure_count <= 3 and team_still_active?(state) do
+              delay = min(30_000 * failure_count, 120_000)
+              Process.send_after(self(), :weaver_cycle, delay)
+            end
+
+            set_status_and_broadcast(state, :idle)
+          else
+            set_status_and_broadcast(state, :idle)
+          end
 
         if from do
           GenServer.reply(from, {:error, reason})
@@ -1171,6 +1242,17 @@ defmodule Loomkin.Teams.Agent do
       _ ->
         {:noreply, state}
     end
+  end
+
+  @impl true
+  def handle_info(:weaver_cycle, %{role: :weaver, loop_task: nil} = state) do
+    {:noreply, state, {:continue, :auto_weave}}
+  end
+
+  @impl true
+  def handle_info(:weaver_cycle, state) do
+    # Already running or not a weaver, skip
+    {:noreply, state}
   end
 
   @impl true
@@ -3093,6 +3175,28 @@ defmodule Loomkin.Teams.Agent do
   # Sets status and broadcasts only when the status actually changed.
   # This prevents duplicate `:agent_status` signals when multiple code paths
   # set the same status (e.g., :working broadcast from both send_message and execute_task).
+  defp maybe_schedule_weaver_cycle(state) do
+    if state.role == :weaver and team_still_active?(state) do
+      # Adaptive interval: immediate if queued messages exist, 30s otherwise
+      delay =
+        if state.priority_queue != [] or state.pending_updates != [] do
+          0
+        else
+          30_000
+        end
+
+      Process.send_after(self(), :weaver_cycle, delay)
+    end
+  end
+
+  defp team_still_active?(state) do
+    agents = Context.list_agents(state.team_id)
+
+    Enum.any?(agents, fn %{role: role, status: status} ->
+      role != :weaver and status in [:idle, :working]
+    end)
+  end
+
   defp set_status_and_broadcast(state, new_status) do
     if state.status == new_status do
       state

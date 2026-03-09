@@ -4572,7 +4572,7 @@ defmodule LoomkinWeb.WorkspaceLive do
       Enum.reduce(cards, {[], [], []}, fn {name, card}, {c, s, w} ->
         cond do
           card.role in [:concierge] -> {[name | c], s, w}
-          card.role in [:orienter] -> {c, [name | s], w}
+          card.role in [:orienter, :weaver] -> {c, [name | s], w}
           true -> {c, s, [name | w]}
         end
       end)

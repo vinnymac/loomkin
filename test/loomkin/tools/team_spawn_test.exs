@@ -17,7 +17,8 @@ defmodule Loomkin.Tools.TeamSpawnTest do
 
       params = %{
         team_name: "child-team-from-tool",
-        roles: [%{name: "researcher-1", role: "researcher"}]
+        roles: [%{name: "researcher-1", role: "researcher"}],
+        purpose: "test signal deduplication"
       }
 
       context = %{
@@ -76,6 +77,221 @@ defmodule Loomkin.Tools.TeamSpawnTest do
       on_exit(fn ->
         Manager.dissolve_team(parent_team_id)
       end)
+    end
+  end
+
+  describe "role resolution" do
+    test "resolve_role handles exact 'weaver' string" do
+      # We test via TeamSpawn.run which calls resolve_role internally
+      {:ok, parent_team_id} = Manager.create_team(name: "role-res-weaver")
+
+      params = %{
+        team_name: "weaver-role-test",
+        roles: [%{name: "w1", role: "weaver"}],
+        purpose: "test weaver resolution"
+      }
+
+      context = %{
+        parent_team_id: parent_team_id,
+        project_path: nil,
+        session_id: nil,
+        model: nil,
+        agent_name: "test-agent"
+      }
+
+      {:ok, result} = TeamSpawn.run(params, context)
+      assert result.result =~ "w1 (weaver): spawned"
+
+      on_exit(fn -> Manager.dissolve_team(parent_team_id) end)
+    end
+
+    test "resolve_role maps 'coordinator' to weaver not lead" do
+      {:ok, parent_team_id} = Manager.create_team(name: "role-res-coord")
+
+      params = %{
+        team_name: "coord-role-test",
+        roles: [%{name: "c1", role: "coordinator"}],
+        purpose: "test coordinator resolution"
+      }
+
+      context = %{
+        parent_team_id: parent_team_id,
+        project_path: nil,
+        session_id: nil,
+        model: nil,
+        agent_name: "test-agent"
+      }
+
+      {:ok, result} = TeamSpawn.run(params, context)
+      # coordinator should resolve to weaver, not lead
+      assert result.result =~ "c1 (weaver): spawned"
+
+      on_exit(fn -> Manager.dissolve_team(parent_team_id) end)
+    end
+
+    test "resolve_role maps 'glue' to weaver" do
+      {:ok, parent_team_id} = Manager.create_team(name: "role-res-glue")
+
+      params = %{
+        team_name: "glue-role-test",
+        roles: [%{name: "g1", role: "glue agent"}],
+        purpose: "test glue resolution"
+      }
+
+      context = %{
+        parent_team_id: parent_team_id,
+        project_path: nil,
+        session_id: nil,
+        model: nil,
+        agent_name: "test-agent"
+      }
+
+      {:ok, result} = TeamSpawn.run(params, context)
+      assert result.result =~ "g1 (weaver): spawned"
+
+      on_exit(fn -> Manager.dissolve_team(parent_team_id) end)
+    end
+  end
+
+  describe "team manifest" do
+    test "spawning agents sends peer_message briefing to each" do
+      {:ok, parent_team_id} = Manager.create_team(name: "manifest-parent")
+
+      params = %{
+        team_name: "manifest-test",
+        roles: [
+          %{name: "r1", role: "researcher"},
+          %{name: "c1", role: "coder"},
+          %{name: "w1", role: "weaver"}
+        ],
+        purpose: "test manifest delivery"
+      }
+
+      context = %{
+        parent_team_id: parent_team_id,
+        project_path: nil,
+        session_id: nil,
+        model: nil,
+        agent_name: "test-agent"
+      }
+
+      {:ok, result} = TeamSpawn.run(params, context)
+      team_id = result.team_id
+
+      # Give peer_messages time to be delivered (they are casts)
+      Process.sleep(200)
+
+      # Check each agent received a manifest via peer_message in their messages
+      for agent_name <- ["r1", "c1", "w1"] do
+        {:ok, pid} = Manager.find_agent(team_id, agent_name)
+        state = :sys.get_state(pid)
+
+        manifest_msgs =
+          Enum.filter(state.messages, fn msg ->
+            msg.role == :user and String.contains?(msg.content, "[Team Briefing]")
+          end)
+
+        assert length(manifest_msgs) >= 1,
+               "Expected #{agent_name} to receive a team manifest peer_message"
+      end
+
+      on_exit(fn -> Manager.dissolve_team(parent_team_id) end)
+    end
+
+    test "manifest includes sibling names and roles but excludes self" do
+      {:ok, parent_team_id} = Manager.create_team(name: "manifest-excl-parent")
+
+      params = %{
+        team_name: "manifest-exclusion-test",
+        roles: [
+          %{name: "alice", role: "researcher"},
+          %{name: "bob", role: "coder"}
+        ],
+        purpose: "test manifest exclusion"
+      }
+
+      context = %{
+        parent_team_id: parent_team_id,
+        project_path: nil,
+        session_id: nil,
+        model: nil,
+        agent_name: "test-agent"
+      }
+
+      {:ok, result} = TeamSpawn.run(params, context)
+      team_id = result.team_id
+
+      Process.sleep(200)
+
+      # Check alice's manifest includes bob but not herself
+      {:ok, alice_pid} = Manager.find_agent(team_id, "alice")
+      alice_state = :sys.get_state(alice_pid)
+
+      alice_manifest =
+        Enum.find(alice_state.messages, fn msg ->
+          msg.role == :user and String.contains?(msg.content, "[Team Briefing]")
+        end)
+
+      assert alice_manifest.content =~ "bob"
+      assert alice_manifest.content =~ "coder"
+      # The manifest should say "You are alice" but not list alice as a teammate
+      assert alice_manifest.content =~ "You are alice"
+      refute alice_manifest.content =~ "- **alice**"
+
+      # Check bob's manifest includes alice but not himself
+      {:ok, bob_pid} = Manager.find_agent(team_id, "bob")
+      bob_state = :sys.get_state(bob_pid)
+
+      bob_manifest =
+        Enum.find(bob_state.messages, fn msg ->
+          msg.role == :user and String.contains?(msg.content, "[Team Briefing]")
+        end)
+
+      assert bob_manifest.content =~ "alice"
+      assert bob_manifest.content =~ "researcher"
+      assert bob_manifest.content =~ "You are bob"
+      refute bob_manifest.content =~ "- **bob**"
+
+      on_exit(fn -> Manager.dissolve_team(parent_team_id) end)
+    end
+
+    test "manifest includes weaver communication hint" do
+      {:ok, parent_team_id} = Manager.create_team(name: "manifest-hint-parent")
+
+      params = %{
+        team_name: "manifest-hint-test",
+        roles: [
+          %{name: "r1", role: "researcher"},
+          %{name: "w1", role: "weaver"}
+        ],
+        purpose: "test weaver hint"
+      }
+
+      context = %{
+        parent_team_id: parent_team_id,
+        project_path: nil,
+        session_id: nil,
+        model: nil,
+        agent_name: "test-agent"
+      }
+
+      {:ok, result} = TeamSpawn.run(params, context)
+      team_id = result.team_id
+
+      Process.sleep(200)
+
+      # Researcher's manifest should have the weaver communication hint
+      {:ok, r1_pid} = Manager.find_agent(team_id, "r1")
+      r1_state = :sys.get_state(r1_pid)
+
+      r1_manifest =
+        Enum.find(r1_state.messages, fn msg ->
+          msg.role == :user and String.contains?(msg.content, "[Team Briefing]")
+        end)
+
+      assert r1_manifest.content =~ "knowledge coordinator"
+
+      on_exit(fn -> Manager.dissolve_team(parent_team_id) end)
     end
   end
 

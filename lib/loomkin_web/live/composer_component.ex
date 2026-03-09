@@ -305,6 +305,7 @@ defmodule LoomkinWeb.ComposerComponent do
               content={@input_text}
               delay_minutes={@schedule_delay_minutes}
               scheduled_messages={@scheduled_messages}
+              phx_target={@myself}
             />
           </div>
 

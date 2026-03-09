@@ -29,7 +29,7 @@
 
 - [x] **TREE-01**: Nested sub-teams at arbitrary depth auto-appear in the UI via recursive subscription
 - [x] **TREE-02**: ChildTeamCreated signal published from Manager.create_sub_team/3 with Process.monitor and ownership-aware termination
-- [ ] **TREE-03**: Pre-spawn budget check and approval gate before spawning expensive sub-trees
+- [x] **TREE-03**: Pre-spawn budget check and approval gate before spawning expensive sub-trees
 
 ### Leader Protocol
 
@@ -83,7 +83,7 @@
 | INTV-03 | Phase 7 — Confidence Triggers | Complete |
 | TREE-01 | Phase 8 — Dynamic Tree Visibility | Complete |
 | TREE-02 | Phase 8 — Dynamic Tree Visibility | Complete |
-| TREE-03 | Phase 9 — Spawn Safety | Pending |
+| TREE-03 | Phase 9 — Spawn Safety | Complete |
 | LEAD-01 | Phase 10 — Leader Research Protocol | Pending |
 | LEAD-02 | Phase 10 — Leader Research Protocol | Pending |
 

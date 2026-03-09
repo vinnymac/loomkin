@@ -177,7 +177,12 @@ defmodule Loomkin.Teams.Rebalancer do
       put_in(state.nudge_counts[agent_name], new_count)
     else
       current_task = find_agent_current_task(state.team_id, agent_name)
-      task_info = if current_task, do: current_task.id, else: "unknown"
+
+      task_info =
+        cond do
+          current_task -> current_task[:title] || current_task.id
+          true -> describe_agent_work(state.team_id, agent_name)
+        end
 
       Comms.broadcast(state.team_id, {:rebalance_needed, agent_name, task_info})
 
@@ -207,7 +212,16 @@ defmodule Loomkin.Teams.Rebalancer do
 
   defp find_agent_current_task(team_id, agent_name) do
     Context.list_cached_tasks(team_id)
-    |> Enum.find(fn t -> t.owner == agent_name and t.status in [:assigned, :in_progress] end)
+    |> Enum.find(fn t ->
+      to_string(t.owner) == to_string(agent_name) and t.status in [:assigned, :in_progress]
+    end)
+  end
+
+  defp describe_agent_work(team_id, agent_name) do
+    case Context.get_agent(team_id, agent_name) do
+      {:ok, %{role: role}} -> "#{agent_name} (#{role})"
+      _ -> agent_name
+    end
   end
 
   defp record_activity(state, agent_name) do

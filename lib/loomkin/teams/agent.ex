@@ -261,6 +261,16 @@ defmodule Loomkin.Teams.Agent do
     Logger.info("[Kin:agent] orienter auto-orient starting team=#{state.team_id}")
     state = set_status_and_broadcast(state, :working)
 
+    task_id = "bootstrap_orient_#{state.team_id}"
+
+    Context.cache_task(state.team_id, task_id, %{
+      title: "orientation scan",
+      status: :in_progress,
+      owner: state.name
+    })
+
+    state = %{state | task: %{id: task_id, title: "orientation scan"}}
+
     orientation_prompt = """
     Begin your orientation scan now. Follow your scanning protocol:
     1. Use decision_query with type "pulse" to check active goals, coverage gaps, and stale nodes
@@ -297,6 +307,23 @@ defmodule Loomkin.Teams.Agent do
     )
 
     state = set_status_and_broadcast(state, :working)
+
+    # Register a tracked task if the agent doesn't already have one
+    state =
+      if is_nil(state.task) do
+        task_id = "msg_#{state.team_id}_#{state.name}_#{System.unique_integer([:positive])}"
+        title = String.slice(text, 0, 80)
+
+        Context.cache_task(state.team_id, task_id, %{
+          title: title,
+          status: :in_progress,
+          owner: state.name
+        })
+
+        %{state | task: %{id: task_id, title: title}}
+      else
+        state
+      end
 
     user_message = %{role: :user, content: text}
     messages = state.messages ++ [user_message]
@@ -860,6 +887,15 @@ defmodule Loomkin.Teams.Agent do
     model = if task[:model_hint], do: ModelRouter.select(state.role, task), else: state.model
     state = %{state | task: task, model: model}
 
+    # Cache the task so the rebalancer can track what this agent is working on
+    if task[:id] do
+      Context.cache_task(state.team_id, task[:id], %{
+        title: task[:title] || task[:description] || "assigned task",
+        status: :assigned,
+        owner: state.name
+      })
+    end
+
     messages = maybe_prefetch_context(state, task)
 
     {:noreply, %{state | messages: messages}}
@@ -972,7 +1008,16 @@ defmodule Loomkin.Teams.Agent do
         if task_id,
           do: ModelRouter.record_success(state.team_id, state.name, task_id, state.model)
 
-        state = %{state | messages: msgs, failure_count: 0, loop_task: nil}
+        # Mark cached task as completed and clear agent task
+        if task_id do
+          Context.cache_task(state.team_id, task_id, %{
+            title: (state.task && state.task[:title]) || "completed",
+            status: :completed,
+            owner: state.name
+          })
+        end
+
+        state = %{state | messages: msgs, failure_count: 0, loop_task: nil, task: nil}
         state = track_usage(state, meta)
 
         # Orienter is one-shot: mark complete instead of idle after auto-orient
@@ -1006,7 +1051,17 @@ defmodule Loomkin.Teams.Agent do
         task_id = state.task && state.task[:id]
         if task_id, do: ModelRouter.record_success(state.team_id, state.name, task_id, new_model)
 
-        state = %{state | messages: msgs, failure_count: 0, model: new_model, loop_task: nil}
+        if task_id do
+          Context.cache_task(state.team_id, task_id, %{
+            title: (state.task && state.task[:title]) || "completed",
+            status: :completed,
+            owner: state.name
+          })
+        end
+
+        state =
+          %{state | messages: msgs, failure_count: 0, model: new_model, loop_task: nil, task: nil}
+
         state = track_usage(state, meta)
 
         # Orienter is one-shot: mark complete instead of idle after auto-orient
@@ -1044,7 +1099,15 @@ defmodule Loomkin.Teams.Agent do
           "[Kin:agent] loop error name=#{state.name} team=#{state.team_id} reason=#{inspect(reason)}"
         )
 
-        state = %{state | messages: msgs, loop_task: nil}
+        if task_id do
+          Context.cache_task(state.team_id, task_id, %{
+            title: (state.task && state.task[:title]) || "failed",
+            status: :failed,
+            owner: state.name
+          })
+        end
+
+        state = %{state | messages: msgs, loop_task: nil, task: nil}
         state = set_status_and_broadcast(state, :idle)
 
         if from do
@@ -1122,7 +1185,15 @@ defmodule Loomkin.Teams.Agent do
           "[Kin:agent] loop crashed name=#{state.name} team=#{state.team_id} reason=#{inspect(reason)}"
         )
 
-        state = %{state | loop_task: nil}
+        if task_id do
+          Context.cache_task(state.team_id, task_id, %{
+            title: (state.task && state.task[:title]) || "crashed",
+            status: :failed,
+            owner: state.name
+          })
+        end
+
+        state = %{state | loop_task: nil, task: nil}
 
         status =
           cond do

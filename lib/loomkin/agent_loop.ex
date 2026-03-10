@@ -335,6 +335,11 @@ defmodule Loomkin.AgentLoop do
     tool_name = tool_call[:name]
     tool_args = tool_call[:arguments] || %{}
     tool_call_id = tool_call[:id] || "call_#{Ecto.UUID.generate()}"
+
+    if is_nil(tool_name) do
+      Logger.warning("[Kin:data] nil tool_name in tool_call: #{inspect(tool_call, limit: 200)}")
+    end
+
     tool_path = tool_args["file_path"] || tool_args["path"] || "*"
 
     # Dynamically resolve project_path at each tool execution
@@ -573,9 +578,17 @@ defmodule Loomkin.AgentLoop do
   defp deep_atomize_value(value), do: value
 
   defp record_tool_result(messages, config, tool_name, tool_call_id, result_text) do
+    result_text =
+      if is_nil(result_text) do
+        Logger.warning("[Kin:data] nil tool_result for tool=#{tool_name}")
+        ""
+      else
+        result_text
+      end
+
     emit(config, :tool_complete, %{tool_name: tool_name, result: result_text})
 
-    if String.starts_with?(result_text || "", "Error:") do
+    if String.starts_with?(result_text, "Error:") do
       emit(config, :tool_error, %{tool_name: tool_name, error: result_text})
     end
 

@@ -83,6 +83,14 @@ defmodule Loomkin.Decisions.AutoLogger do
     agent_name = data.agent_name
     title = task_title(task_id)
 
+    if is_nil(agent_name) or is_nil(task_id) do
+      require Logger
+
+      Logger.warning(
+        "[Kin:data] auto_logger task.assigned missing fields: agent_name=#{inspect(agent_name)} task_id=#{inspect(task_id)}"
+      )
+    end
+
     case log_node(state, %{
            node_type: :action,
            title: "Task assigned: #{title} -> #{agent_name}",

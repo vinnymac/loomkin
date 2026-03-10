@@ -693,38 +693,44 @@ defmodule Loomkin.Teams.Agent do
 
   def handle_call({:resume, opts}, _from, %{status: :paused} = state) do
     paused = state.paused_state
-    messages = paused.messages
 
-    # If user provided steering guidance, inject it as a user message
-    messages =
-      case Keyword.get(opts, :guidance) do
-        nil ->
-          messages
+    if is_nil(paused) do
+      Logger.warning("[Kin:data] paused_state is nil on resume for agent=#{state.name}")
+      {:reply, {:error, :invalid_paused_state}, %{state | status: :idle}}
+    else
+      messages = paused.messages
 
-        guidance when is_binary(guidance) ->
-          messages ++ [%{role: :user, content: "[User Guidance]: #{guidance}"}]
-      end
+      # If user provided steering guidance, inject it as a user message
+      messages =
+        case Keyword.get(opts, :guidance) do
+          nil ->
+            messages
 
-    state = %{
-      state
-      | pause_requested: false,
-        paused_state: nil,
-        messages: messages
-    }
+          guidance when is_binary(guidance) ->
+            messages ++ [%{role: :user, content: "[User Guidance]: #{guidance}"}]
+        end
 
-    state = set_status_and_broadcast(state, :working)
+      state = %{
+        state
+        | pause_requested: false,
+          paused_state: nil,
+          messages: messages
+      }
 
-    loop_opts = build_loop_opts(state)
-    snapshot = build_snapshot(state)
+      state = set_status_and_broadcast(state, :working)
 
-    task =
-      Task.Supervisor.async_nolink(Loomkin.Teams.TaskSupervisor, fn ->
-        run_loop_with_escalation(messages, loop_opts, snapshot)
-      end)
+      loop_opts = build_loop_opts(state)
+      snapshot = build_snapshot(state)
 
-    Logger.debug("[Kin:loop] spawned agent=#{state.name} ref=#{inspect(task.ref)}")
+      task =
+        Task.Supervisor.async_nolink(Loomkin.Teams.TaskSupervisor, fn ->
+          run_loop_with_escalation(messages, loop_opts, snapshot)
+        end)
 
-    {:reply, :ok, %{state | loop_task: {task, nil}}}
+      Logger.debug("[Kin:loop] spawned agent=#{state.name} ref=#{inspect(task.ref)}")
+
+      {:reply, :ok, %{state | loop_task: {task, nil}}}
+    end
   end
 
   # --- AskUser rate-limit handle_call ---
@@ -1335,15 +1341,43 @@ defmodule Loomkin.Teams.Agent do
   def handle_info(%Jido.Signal{type: "context.update"} = sig, state) do
     from = sig.data[:from] || sig.data["from"]
     payload = sig.data[:payload] || sig.data
+
+    if is_nil(from) do
+      Logger.warning(
+        "[Kin:data] context.update signal missing :from, keys=#{inspect(Map.keys(sig.data))}"
+      )
+    end
+
     handle_info({:context_update, from, payload}, state)
   end
 
   def handle_info(%Jido.Signal{type: "agent.status"} = sig, state) do
-    handle_info({:agent_status, sig.data.agent_name, sig.data.status}, state)
+    case sig.data do
+      %{agent_name: name, status: status} when not is_nil(name) and not is_nil(status) ->
+        handle_info({:agent_status, name, status}, state)
+
+      _ ->
+        Logger.warning(
+          "[Kin:data] agent.status signal missing fields: #{inspect(sig.data, limit: 100)}"
+        )
+
+        {:noreply, state}
+    end
   end
 
   def handle_info(%Jido.Signal{type: "agent.role.changed"} = sig, state) do
-    handle_info({:role_changed, sig.data.agent_name, sig.data.old_role, sig.data.new_role}, state)
+    case sig.data do
+      %{agent_name: name, old_role: old_role, new_role: new_role}
+      when not is_nil(name) and not is_nil(new_role) ->
+        handle_info({:role_changed, name, old_role, new_role}, state)
+
+      _ ->
+        Logger.warning(
+          "[Kin:data] role.changed signal missing fields: #{inspect(sig.data, limit: 100)}"
+        )
+
+        {:noreply, state}
+    end
   end
 
   def handle_info(%Jido.Signal{type: "context.keeper.created"} = sig, state) do
@@ -1362,7 +1396,17 @@ defmodule Loomkin.Teams.Agent do
   end
 
   def handle_info(%Jido.Signal{type: "team.task.assigned"} = sig, state) do
-    handle_info({:task_assigned, sig.data.task_id, sig.data.agent_name}, state)
+    case sig.data do
+      %{task_id: task_id, agent_name: name} when not is_nil(task_id) and not is_nil(name) ->
+        handle_info({:task_assigned, task_id, name}, state)
+
+      _ ->
+        Logger.warning(
+          "[Kin:data] task.assigned signal missing fields: #{inspect(sig.data, limit: 100)}"
+        )
+
+        {:noreply, state}
+    end
   end
 
   def handle_info(%Jido.Signal{type: "team.task.completed"} = sig, state) do
@@ -1548,7 +1592,15 @@ defmodule Loomkin.Teams.Agent do
       {:noreply, state}
     else
       task = state.task
-      description = task[:description] || task[:title] || "Complete task #{task_id}"
+
+      if is_nil(task) do
+        Logger.warning(
+          "[Kin:data] auto_execute_task with nil task for agent=#{state.name} task_id=#{task_id}"
+        )
+      end
+
+      description =
+        (is_map(task) && (task[:description] || task[:title])) || "Complete task #{task_id}"
 
       state = set_status_and_broadcast(state, :working)
 

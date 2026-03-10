@@ -1,6 +1,8 @@
 defmodule Loomkin.Teams.Comms do
   @moduledoc "Convenience functions wrapping Jido Signal Bus for team communication."
 
+  require Logger
+
   alias Loomkin.Signals
   alias Loomkin.Signals.Extensions.Causality
   alias Loomkin.Teams.Topics
@@ -73,7 +75,17 @@ defmodule Loomkin.Teams.Comms do
       `:blocker` type discoveries. Defaults to `true`.
 
   """
-  def broadcast_context(team_id, %{from: from} = payload, opts \\ []) do
+  def broadcast_context(team_id, payload, opts \\ [])
+
+  def broadcast_context(_team_id, %{from: nil} = payload, _opts) do
+    Logger.warning(
+      "[Kin:data] broadcast_context called with nil :from, keys=#{inspect(Map.keys(payload))}"
+    )
+
+    :ok
+  end
+
+  def broadcast_context(team_id, %{from: from} = payload, opts) do
     signal = Loomkin.Signals.Context.Update.new!(%{from: to_string(from), team_id: team_id})
 
     %{signal | data: Map.merge(signal.data, %{payload: payload})}

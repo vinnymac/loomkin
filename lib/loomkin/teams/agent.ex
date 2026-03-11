@@ -2386,7 +2386,17 @@ defmodule Loomkin.Teams.Agent do
 
   @doc false
   def resolve_project_path(team_id, fallback) do
-    Manager.get_team_project_path(team_id) || fallback
+    case Manager.get_team_project_path(team_id) do
+      nil ->
+        Logger.warning(
+          "[Kin:agent] project_path ETS lookup failed for team=#{team_id}, using fallback=#{fallback}"
+        )
+
+        fallback
+
+      path ->
+        path
+    end
   end
 
   defp build_loop_opts(state) do

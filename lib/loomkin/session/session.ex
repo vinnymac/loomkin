@@ -186,11 +186,16 @@ defmodule Loomkin.Session do
         # Subscribe to task signals for child team completion tracking
         Loomkin.Signals.subscribe("team.task.**")
 
+        # For resumed sessions, always trust the DB-persisted project_path.
+        # The parameter may be stale (e.g. File.cwd!() fallback) and would
+        # cause agents to operate on the wrong project.
+        effective_project_path = db_session.project_path || project_path
+
         state = %__MODULE__{
           id: db_session.id,
           model: effective_model,
           fast_model: effective_fast_model,
-          project_path: project_path,
+          project_path: effective_project_path,
           db_session: db_session,
           messages: messages,
           status: :idle,

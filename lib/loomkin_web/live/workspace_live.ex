@@ -112,7 +112,8 @@ defmodule LoomkinWeb.WorkspaceLive do
               else: nil
 
           cond do
-            stored_session && stored_session.status == :active ->
+            stored_session && stored_session.status == :active &&
+                stored_session.project_path == project_path ->
               {:ok, push_navigate(socket, to: ~p"/sessions/#{stored_session.id}")}
 
             latest = Loomkin.Session.Persistence.find_latest_active_session(project_path) ->
@@ -5216,6 +5217,11 @@ defmodule LoomkinWeb.WorkspaceLive do
     team_id = socket.assigns[:team_id]
 
     if team_id do
+      # Cancel any in-flight agent loops before switching so they don't
+      # operate on the old project between the path update and their next
+      # tool call. The :confirm path already cancels, but the direct path
+      # (no active agents) may still have loops starting up.
+      Teams.Manager.cancel_all_loops(team_id)
       Teams.Manager.update_project_path(team_id, path)
     end
 

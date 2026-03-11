@@ -205,4 +205,47 @@ defmodule Loomkin.Signals.Team do
         team_id: [type: :string, required: true]
       ]
   end
+
+  defmodule TaskNegotiationStarted do
+    use Jido.Signal,
+      type: "team.task.negotiation.started",
+      schema: [
+        task_id: [type: :string, required: true],
+        agent_name: [type: :string, required: true],
+        team_id: [type: :string, required: true]
+      ]
+  end
+
+  defmodule TaskNegotiationOffer do
+    use Jido.Signal,
+      type: "team.task.negotiation.offer",
+      schema: [
+        task_id: [type: :string, required: true],
+        agent_name: [type: :string, required: true],
+        reason: [type: :string],
+        counter_proposal: [type: :string],
+        team_id: [type: :string, required: true]
+      ]
+  end
+
+  defmodule TaskNegotiationResolved do
+    use Jido.Signal,
+      type: "team.task.negotiation.resolved",
+      schema: [
+        task_id: [type: :string, required: true],
+        agent_name: [type: :string, required: true],
+        resolution: [type: :string, required: true],
+        team_id: [type: :string, required: true]
+      ]
+  end
+
+  defmodule TaskNegotiationTimedOut do
+    use Jido.Signal,
+      type: "team.task.negotiation.timed_out",
+      schema: [
+        task_id: [type: :string, required: true],
+        agent_name: [type: :string, required: true],
+        team_id: [type: :string, required: true]
+      ]
+  end
 end

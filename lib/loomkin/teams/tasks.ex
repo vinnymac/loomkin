@@ -26,7 +26,7 @@ defmodule Loomkin.Teams.Tasks do
     end)
   end
 
-  def assign_task(task_id, agent_name) do
+  def assign_task(task_id, agent_name, opts \\ []) do
     get_task!(task_id)
     |> TeamTask.changeset(%{owner: agent_name, status: :assigned})
     |> Repo.update()
@@ -38,6 +38,15 @@ defmodule Loomkin.Teams.Tasks do
         status: :assigned,
         owner: agent_name
       })
+
+      if Keyword.get(opts, :negotiable, false) do
+        Loomkin.Teams.Negotiation.start_negotiation(
+          task.team_id,
+          task.id,
+          agent_name,
+          Keyword.take(opts, [:timeout_ms])
+        )
+      end
     end)
   end
 

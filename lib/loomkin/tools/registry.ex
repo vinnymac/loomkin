@@ -29,7 +29,8 @@ defmodule Loomkin.Tools.Registry do
     Loomkin.Tools.PeerEmitMilestone,
     Loomkin.Tools.PeerAddDependency,
     Loomkin.Tools.PeerUpdateTaskStatus,
-    Loomkin.Tools.PeerSignalReady
+    Loomkin.Tools.PeerSignalReady,
+    Loomkin.Tools.PeerNegotiateTask
   ]
 
   @lead_tools [
@@ -37,7 +38,8 @@ defmodule Loomkin.Tools.Registry do
     Loomkin.Tools.TeamAssign,
     Loomkin.Tools.TeamProgress,
     Loomkin.Tools.TeamDissolve,
-    Loomkin.Tools.CreateRendezvous
+    Loomkin.Tools.CreateRendezvous,
+    Loomkin.Tools.PeerResolveNegotiation
   ]
 
   @team_tools @peer_tools ++ @lead_tools
@@ -116,6 +118,7 @@ defmodule Loomkin.Tools.Registry do
     gate_id gate_context
     depends_on_id dep_type milestone_name
     new_status reason ready_for rendezvous_id required_agents on_complete_message timeout_minutes
+    response counter_proposal resolution
   )a
 
   @known_param_key_map Map.new(@known_param_keys, fn atom -> {Atom.to_string(atom), atom} end)

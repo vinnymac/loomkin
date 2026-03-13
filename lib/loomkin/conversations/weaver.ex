@@ -19,7 +19,8 @@ defmodule Loomkin.Conversations.Weaver do
     :team_id,
     :model,
     :spawned_by,
-    :task_ref
+    :task_ref,
+    :task_pid
   ]
 
   # --- Public API ---
@@ -50,14 +51,14 @@ defmodule Loomkin.Conversations.Weaver do
 
   @impl true
   def handle_info({:summarize, conversation_id, history, topic, participants}, state) do
-    if conversation_id == state.conversation_id do
+    if conversation_id == state.conversation_id and is_nil(state.task_ref) do
       # Dispatch summary generation to a Task to avoid blocking the mailbox
       task =
         Task.Supervisor.async_nolink(Loomkin.Healing.TaskSupervisor, fn ->
           generate_summary(history, topic, participants, state)
         end)
 
-      {:noreply, %{state | task_ref: task.ref}}
+      {:noreply, %{state | task_ref: task.ref, task_pid: task.pid}}
     else
       {:noreply, state}
     end

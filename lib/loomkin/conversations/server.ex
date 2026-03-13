@@ -28,6 +28,7 @@ defmodule Loomkin.Conversations.Server do
     :max_tokens,
     :started_at,
     :ended_at,
+    :end_reason,
     :summary,
     participants: [],
     history: [],
@@ -278,6 +279,11 @@ defmodule Loomkin.Conversations.Server do
 
   # --- Terminate ---
 
+  def handle_call({:terminate, _reason}, _from, %{status: status} = state)
+      when status != :active do
+    {:reply, {:error, :conversation_not_active}, state}
+  end
+
   def handle_call({:terminate, reason}, _from, state) do
     state = end_conversation(state, reason)
     {:reply, :ok, state}
@@ -377,17 +383,18 @@ defmodule Loomkin.Conversations.Server do
     MapSet.equal?(state.yields_this_round, participant_names)
   end
 
-  defp end_conversation(state, _reason) do
+  defp end_conversation(state, reason) do
     cancel_inactivity_timer(state)
 
     state = %{
       state
       | status: :summarizing,
         ended_at: DateTime.utc_now(),
+        end_reason: reason,
         inactivity_timer: nil
     }
 
-    emit_summarizing(state)
+    emit_summarizing(state, reason)
 
     # Notify weaver (via PubSub) that summarization should begin
     notify_summarize(state)
@@ -473,11 +480,20 @@ defmodule Loomkin.Conversations.Server do
     )
   end
 
-  defp emit_summarizing(state) do
+  defp emit_summarizing(state, reason) do
     Signals.publish(
       Loomkin.Signals.Collaboration.ConversationSummarizing.new!(%{
         conversation_id: state.id,
         team_id: state.team_id
+      })
+    )
+
+    # Also emit the reason as a terminated signal for observability
+    Signals.publish(
+      Loomkin.Signals.Collaboration.ConversationTerminated.new!(%{
+        conversation_id: state.id,
+        team_id: state.team_id,
+        reason: format_reason(reason)
       })
     )
   end
@@ -489,7 +505,7 @@ defmodule Loomkin.Conversations.Server do
       Loomkin.Signals.Collaboration.ConversationEnded.new!(%{
         conversation_id: state.id,
         team_id: state.team_id,
-        reason: "summary_complete",
+        reason: format_reason(state.end_reason || :summary_complete),
         rounds: state.current_round,
         tokens_used: state.tokens_used,
         participants: participant_names,
@@ -497,6 +513,10 @@ defmodule Loomkin.Conversations.Server do
       })
     )
   end
+
+  defp format_reason(reason) when is_atom(reason), do: to_string(reason)
+  defp format_reason(reason) when is_binary(reason), do: reason
+  defp format_reason(reason), do: inspect(reason)
 
   defp emit_budget_warning(state) do
     Signals.publish(

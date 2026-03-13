@@ -27,6 +27,7 @@ defmodule Loomkin.Conversations.Agent do
     :model,
     :topic,
     :task_ref,
+    :task_pid,
     tokens_used: 0
   ]
 
@@ -74,49 +75,55 @@ defmodule Loomkin.Conversations.Agent do
           run_turn(history, topic, context, state)
         end)
 
-      {:noreply, %{state | task_ref: task.ref}}
+      {:noreply, %{state | task_ref: task.ref, task_pid: task.pid}}
     else
       {:noreply, state}
     end
   end
 
   def handle_info({:summarize, _, _, _, _}, state) do
-    # Conversation ended, cancel in-flight task and stop
-    cancel_task(state)
+    # Conversation ended, kill in-flight task and stop
+    kill_task(state)
     {:stop, :normal, state}
   end
 
   # Task completed successfully
   def handle_info({ref, {:ok, tokens}}, %{task_ref: ref} = state) do
     Process.demonitor(ref, [:flush])
-    {:noreply, %{state | task_ref: nil, tokens_used: state.tokens_used + tokens}}
+    {:noreply, %{state | task_ref: nil, task_pid: nil, tokens_used: state.tokens_used + tokens}}
   end
 
-  # Task failed
+  # Task failed — yield so the conversation can continue
   def handle_info({ref, {:error, _reason}}, %{task_ref: ref} = state) do
     Process.demonitor(ref, [:flush])
-    {:noreply, %{state | task_ref: nil}}
-  end
 
-  # Task crashed
-  def handle_info({:DOWN, ref, :process, _pid, reason}, %{task_ref: ref} = state) do
-    Logger.warning("[ConversationAgent] LLM task crashed for #{state.name}: #{inspect(reason)}")
-
-    # Yield so the conversation can continue
     Loomkin.Conversations.Server.yield(
       state.conversation_id,
       state.name,
       "error generating response"
     )
 
-    {:noreply, %{state | task_ref: nil}}
+    {:noreply, %{state | task_ref: nil, task_pid: nil}}
+  end
+
+  # Task crashed — yield so the conversation can continue
+  def handle_info({:DOWN, ref, :process, _pid, reason}, %{task_ref: ref} = state) do
+    Logger.warning("[ConversationAgent] LLM task crashed for #{state.name}: #{inspect(reason)}")
+
+    Loomkin.Conversations.Server.yield(
+      state.conversation_id,
+      state.name,
+      "error generating response"
+    )
+
+    {:noreply, %{state | task_ref: nil, task_pid: nil}}
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
 
   @impl true
   def terminate(_reason, state) do
-    cancel_task(state)
+    kill_task(state)
     :ok
   end
 
@@ -140,13 +147,7 @@ defmodule Loomkin.Conversations.Agent do
 
       {:error, reason} ->
         Logger.warning("[ConversationAgent] LLM error for #{state.name}: #{inspect(reason)}")
-
-        Loomkin.Conversations.Server.yield(
-          state.conversation_id,
-          state.name,
-          "error generating response"
-        )
-
+        # Return error — the GenServer handler will yield on behalf of the agent
         {:error, reason}
     end
   end
@@ -189,7 +190,6 @@ defmodule Loomkin.Conversations.Agent do
   end
 
   defp extract_tool_calls(response) when is_map(response) do
-    # Handle ReqLLM response format with tool_calls in content blocks
     content = Map.get(response, "content", Map.get(response, :content, []))
 
     content
@@ -218,10 +218,11 @@ defmodule Loomkin.Conversations.Agent do
 
   defp extract_token_count(_), do: 0
 
-  defp cancel_task(%{task_ref: nil}), do: :ok
+  defp kill_task(%{task_pid: nil}), do: :ok
 
-  defp cancel_task(%{task_ref: ref}) do
+  defp kill_task(%{task_pid: pid, task_ref: ref}) do
     Process.demonitor(ref, [:flush])
+    Task.Supervisor.terminate_child(Loomkin.Healing.TaskSupervisor, pid)
     :ok
   end
 end

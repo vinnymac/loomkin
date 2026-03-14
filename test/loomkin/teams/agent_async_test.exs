@@ -391,13 +391,14 @@ defmodule Loomkin.Teams.AgentAsyncTest do
       # Complete the loop — should drain queues
       send(pid, {ref, {:loop_ok, "done", [%{role: :assistant, content: "done"}], %{usage: %{}}}})
 
-      # Wait for drain to complete — poll until queues are empty
+      # Wait for drain to complete — poll until queues are empty AND context is updated.
+      # Queues empty first (messages move to mailbox), then handle_info processes them.
       state =
-        Enum.reduce_while(1..20, nil, fn _, _ ->
+        Enum.reduce_while(1..30, nil, fn _, _ ->
           Process.sleep(20)
           s = :sys.get_state(pid)
 
-          if s.pending_updates == [] and s.priority_queue == [] do
+          if s.pending_updates == [] and s.priority_queue == [] and s.context["peer-1"] != nil do
             {:halt, s}
           else
             {:cont, nil}

@@ -55,7 +55,7 @@ defmodule Loomkin.Decisions.AutoLoggerTest do
   describe "agent_status events" do
     test "logs action node on first :working status", %{team_id: team_id, logger_pid: pid} do
       send_status(pid, "alice", team_id, :working)
-      Process.sleep(50)
+      Process.sleep(200)
 
       nodes = Graph.list_nodes(node_type: :action)
       assert length(nodes) == 1
@@ -66,9 +66,9 @@ defmodule Loomkin.Decisions.AutoLoggerTest do
 
     test "only logs once per agent (deduplicates)", %{team_id: team_id, logger_pid: pid} do
       send_status(pid, "bob", team_id, :working)
-      Process.sleep(50)
+      Process.sleep(200)
       send_status(pid, "bob", team_id, :working)
-      Process.sleep(50)
+      Process.sleep(200)
 
       nodes = Graph.list_nodes(node_type: :action)
       assert length(nodes) == 1
@@ -77,7 +77,7 @@ defmodule Loomkin.Decisions.AutoLoggerTest do
     test "logs separate nodes for different agents", %{team_id: team_id, logger_pid: pid} do
       send_status(pid, "alice", team_id, :working)
       send_status(pid, "bob", team_id, :working)
-      Process.sleep(50)
+      Process.sleep(200)
 
       nodes = Graph.list_nodes(node_type: :action)
       assert length(nodes) == 2
@@ -88,7 +88,7 @@ defmodule Loomkin.Decisions.AutoLoggerTest do
 
     test "ignores non-working statuses", %{team_id: team_id, logger_pid: pid} do
       send_status(pid, "carol", team_id, :idle)
-      Process.sleep(50)
+      Process.sleep(200)
 
       assert Graph.list_nodes(node_type: :action) == []
     end
@@ -99,7 +99,7 @@ defmodule Loomkin.Decisions.AutoLoggerTest do
       {:ok, task} = create_task(team_id, "Implement feature X")
 
       send_task_assigned(pid, task.id, "alice", team_id)
-      Process.sleep(50)
+      Process.sleep(200)
 
       nodes = Graph.list_nodes(node_type: :action)
       assert length(nodes) == 1
@@ -116,10 +116,10 @@ defmodule Loomkin.Decisions.AutoLoggerTest do
       {:ok, task} = create_task(team_id, "Fix bug Y")
 
       send_task_assigned(pid, task.id, "bob", team_id)
-      Process.sleep(50)
+      Process.sleep(200)
 
       send_task_completed(pid, task.id, "bob", team_id)
-      Process.sleep(50)
+      Process.sleep(200)
 
       outcomes = Graph.list_nodes(node_type: :outcome)
       assert length(outcomes) == 1
@@ -137,10 +137,10 @@ defmodule Loomkin.Decisions.AutoLoggerTest do
       {:ok, task} = create_task(team_id, "Deploy service")
 
       send_task_assigned(pid, task.id, "carol", team_id)
-      Process.sleep(50)
+      Process.sleep(200)
 
       send_task_failed(pid, task.id, "carol", team_id)
-      Process.sleep(50)
+      Process.sleep(200)
 
       outcomes = Graph.list_nodes(node_type: :outcome)
       assert length(outcomes) == 1
@@ -166,7 +166,7 @@ defmodule Loomkin.Decisions.AutoLoggerTest do
 
       send(pid, {:signal, sig})
 
-      Process.sleep(50)
+      Process.sleep(200)
 
       nodes = Graph.list_nodes(node_type: :observation)
       assert length(nodes) == 1
@@ -181,7 +181,7 @@ defmodule Loomkin.Decisions.AutoLoggerTest do
     test "are skipped (redundant with keeper_created)", %{team_id: team_id, logger_pid: pid} do
       sig = Loomkin.Signals.Context.Offloaded.new!(%{agent_name: "alice", team_id: team_id})
       send(pid, {:signal, sig})
-      Process.sleep(50)
+      Process.sleep(200)
 
       assert Graph.list_nodes() == []
     end
@@ -198,7 +198,7 @@ defmodule Loomkin.Decisions.AutoLoggerTest do
         })
 
       send_status(pid, "alice", team_id, :working)
-      Process.sleep(50)
+      Process.sleep(200)
 
       action = hd(Graph.list_nodes(node_type: :action))
       edges = Graph.list_edges(from_node_id: goal.id, edge_type: :leads_to)

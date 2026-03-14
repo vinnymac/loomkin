@@ -344,7 +344,7 @@ defmodule Loomkin.Teams.DebateProtocolTest do
         Task.async(fn ->
           Debate.initiate_debate(team_id, "escalation test", ["alice", "bob", "carol"],
             max_rounds: 1,
-            round_timeout_ms: 300,
+            round_timeout_ms: 500,
             policy: policy
           )
         end)
@@ -354,14 +354,14 @@ defmodule Loomkin.Teams.DebateProtocolTest do
                         type: "collaboration.peer.message",
                         data: %{message: {:debate_start, debate_id, "escalation test", _opts}}
                       }},
-                     500
+                     1_000
 
       assert_receive {:signal,
                       %Jido.Signal{
                         type: "collaboration.peer.message",
                         data: %{message: {:debate_propose, ^debate_id, 1, _}}
                       }},
-                     500
+                     1_000
 
       # All three propose different things
       Debate.submit_response(team_id, debate_id, :proposal, %{

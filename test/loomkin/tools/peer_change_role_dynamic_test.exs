@@ -11,11 +11,18 @@ defmodule Loomkin.Tools.PeerChangeRoleDynamicTest do
   alias Loomkin.Teams.{Agent, Manager, Role, TableRegistry}
 
   setup do
-    {:ok, team_id} = Manager.create_team(name: "peer-role-test", project_path: "/tmp/test-proj")
+    suffix = :erlang.unique_integer([:positive])
+
+    {:ok, team_id} =
+      Manager.create_team(name: "peer-role-test-#{suffix}", project_path: "/tmp/test-proj")
 
     on_exit(fn ->
-      for agent <- Manager.list_agents(team_id) do
-        Manager.stop_agent(team_id, agent.name)
+      try do
+        for agent <- Manager.list_agents(team_id) do
+          Manager.stop_agent(team_id, agent.name)
+        end
+      catch
+        :exit, _ -> :ok
       end
 
       TableRegistry.delete_table(team_id)

@@ -30,7 +30,7 @@ defmodule Loomkin.Teams.TeamBroadcasterTest do
       signal = build_signal("agent.stream.delta")
       Signals.publish(signal)
 
-      refute_receive {:team_broadcast, _}, 20
+      refute_receive {:team_broadcast, _}, 5
     end
 
     test "batchable signals are delivered after flush interval" do

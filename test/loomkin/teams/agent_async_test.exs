@@ -233,9 +233,20 @@ defmodule Loomkin.Teams.AgentAsyncTest do
 
       # Complete the loop — messages get set from loop result, then drain replays inject
       send(pid, {ref, {:loop_ok, "done", [%{role: :assistant, content: "done"}], %{usage: %{}}}})
-      Process.sleep(100)
 
-      state = :sys.get_state(pid)
+      # Wait for drain to complete — use :sys.get_state to synchronize with the GenServer
+      # rather than a fixed sleep which is unreliable in CI.
+      state =
+        Enum.reduce_while(1..20, nil, fn _, _ ->
+          Process.sleep(20)
+          s = :sys.get_state(pid)
+
+          if Enum.any?(s.messages, &(Map.get(&1, :role) == :system)) do
+            {:halt, s}
+          else
+            {:cont, nil}
+          end
+        end) || :sys.get_state(pid)
 
       assert Enum.any?(state.messages, fn msg ->
                msg.role == :system && String.contains?(msg.content, "File conflict")
@@ -379,9 +390,20 @@ defmodule Loomkin.Teams.AgentAsyncTest do
 
       # Complete the loop — should drain queues
       send(pid, {ref, {:loop_ok, "done", [%{role: :assistant, content: "done"}], %{usage: %{}}}})
-      Process.sleep(100)
 
-      state = :sys.get_state(pid)
+      # Wait for drain to complete — poll until queues are empty
+      state =
+        Enum.reduce_while(1..20, nil, fn _, _ ->
+          Process.sleep(20)
+          s = :sys.get_state(pid)
+
+          if s.pending_updates == [] and s.priority_queue == [] do
+            {:halt, s}
+          else
+            {:cont, nil}
+          end
+        end) || :sys.get_state(pid)
+
       # Queues should be drained
       assert state.pending_updates == []
       assert state.priority_queue == []

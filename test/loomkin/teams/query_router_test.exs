@@ -6,10 +6,15 @@ defmodule Loomkin.Teams.QueryRouterTest do
   setup do
     {:ok, team_id} = Manager.create_team(name: "qr-test")
 
-    # Clear any stale queries from other tests
-    QueryRouter.expire_stale(0)
-    Process.sleep(1)
-    QueryRouter.expire_stale(0)
+    # Clear any stale queries from other tests.
+    # Wrap in try — the QueryRouter GenServer may still be restarting from a prior test.
+    try do
+      QueryRouter.expire_stale(0)
+      Process.sleep(1)
+      QueryRouter.expire_stale(0)
+    catch
+      :exit, _ -> :ok
+    end
 
     on_exit(fn ->
       DynamicSupervisor.which_children(Loomkin.Teams.AgentSupervisor)

@@ -33,6 +33,8 @@ defmodule Loomkin.Teams.Agent do
     :status,
     :model,
     :project_path,
+    # Cached from KinAgent DB record at init to avoid a per-loop DB query.
+    system_prompt_extra: nil,
     tools: [],
     messages: [],
     task: nil,
@@ -232,6 +234,14 @@ defmodule Loomkin.Teams.Agent do
 
         {:ok, sub_ids} = Comms.subscribe(team_id, name)
 
+        # Look up system_prompt_extra from the kin_agents list passed at spawn time
+        # (already scoped to the session's user) rather than a global DB query.
+        system_prompt_extra =
+          case Enum.find(kin_agents, fn kin -> kin.name == to_string(name) end) do
+            %{system_prompt_extra: extra} when is_binary(extra) and extra != "" -> extra
+            _ -> nil
+          end
+
         state = %__MODULE__{
           team_id: team_id,
           session_id: session_id,
@@ -243,7 +253,8 @@ defmodule Loomkin.Teams.Agent do
           project_path: project_path,
           tools: role_config.tools,
           permission_mode: permission_mode,
-          subscription_ids: sub_ids
+          subscription_ids: sub_ids,
+          system_prompt_extra: system_prompt_extra
         }
 
         # Monitor via AgentWatcher BEFORE init completes — guarantees no gap
@@ -2800,6 +2811,9 @@ defmodule Loomkin.Teams.Agent do
     # Orchestrator mode: Lead agents with specialists lose tactical tools.
     {tools, system_prompt} = maybe_apply_orchestrator_mode(state, system_prompt)
 
+    # Kin agent customization: append user-defined extra instructions if present.
+    system_prompt = maybe_inject_system_prompt_extra(system_prompt, state)
+
     # A resolver fn allows AgentLoop to read the latest project_path from
     # team ETS at every tool call, even when the Task captured stale opts.
     project_path_resolver = fn -> resolve_project_path(team_id, state.project_path) end
@@ -2813,6 +2827,9 @@ defmodule Loomkin.Teams.Agent do
       agent_name: state.name,
       team_id: state.team_id,
       session_id: state.session_id,
+      # Agents do not carry an authenticated user — disk skills load via
+      # load_from_disk/1 at session bootstrap; DB skills require a user.
+      user: nil,
       reasoning_strategy: state.role_config.reasoning_strategy,
       check_permission: permission_callback,
       checkpoint: checkpoint_callback,
@@ -2943,6 +2960,16 @@ defmodule Loomkin.Teams.Agent do
       {Role.orchestrator_tools(), system_prompt <> "\n\n" <> Role.orchestrator_prompt_addition()}
     else
       {state.tools, system_prompt}
+    end
+  end
+
+  defp maybe_inject_system_prompt_extra(system_prompt, state) do
+    case state.system_prompt_extra do
+      extra when is_binary(extra) and extra != "" ->
+        system_prompt <> "\n\n## Additional Instructions\n" <> extra
+
+      _ ->
+        system_prompt
     end
   end
 

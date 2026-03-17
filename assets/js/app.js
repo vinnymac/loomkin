@@ -478,6 +478,75 @@ Hooks.ResizablePanel = {
   }
 }
 
+// VerticalSplit: drag handle to resize top/bottom pane split
+Hooks.VerticalSplit = {
+  mounted() {
+    const handle = this.el.querySelector('#mc-split-handle')
+    const topPane = this.el.querySelector('#mc-top-pane')
+    if (!handle || !topPane) return
+
+    const MIN_TOP = 120
+    const MIN_BOTTOM = 150
+
+    // Set initial height from saved preference or 40% default
+    const setInitialHeight = () => {
+      const containerHeight = this.el.getBoundingClientRect().height
+      if (containerHeight === 0) return // not laid out yet
+      const savedPct = localStorage.getItem('mc-split-pct')
+      const pct = savedPct ? parseInt(savedPct) : 40
+      topPane.style.height = Math.max(MIN_TOP, (containerHeight * pct) / 100) + 'px'
+    }
+
+    setInitialHeight()
+    // Retry in case layout isn't ready on first mount
+    requestAnimationFrame(() => setInitialHeight())
+
+    let dragging = false
+    let startY = 0
+    let startHeight = 0
+
+    const onMouseDown = (e) => {
+      e.preventDefault()
+      dragging = true
+      startY = e.clientY
+      startHeight = topPane.getBoundingClientRect().height
+      document.body.style.cursor = 'row-resize'
+      document.body.style.userSelect = 'none'
+    }
+
+    const onMouseMove = (e) => {
+      if (!dragging) return
+      const ch = this.el.getBoundingClientRect().height
+      const delta = e.clientY - startY
+      const newHeight = Math.max(MIN_TOP, Math.min(ch - MIN_BOTTOM, startHeight + delta))
+      topPane.style.height = newHeight + 'px'
+    }
+
+    const onMouseUp = () => {
+      if (!dragging) return
+      dragging = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      const ch = this.el.getBoundingClientRect().height
+      const pct = Math.round((topPane.getBoundingClientRect().height / ch) * 100)
+      localStorage.setItem('mc-split-pct', pct)
+    }
+
+    handle.addEventListener('mousedown', onMouseDown)
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+
+    this._cleanup = () => {
+      handle.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+  },
+  destroyed() {
+    if (this._cleanup) this._cleanup()
+  }
+}
+
 // AutoResizeTextarea: auto-grows textarea as user types
 Hooks.AutoResizeTextarea = {
   mounted() {

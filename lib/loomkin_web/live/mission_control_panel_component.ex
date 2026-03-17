@@ -29,10 +29,19 @@ defmodule LoomkinWeb.MissionControlPanelComponent do
 
   @impl true
   def update(assigns, socket) do
-    {:ok, assign(socket, assigns)}
+    socket =
+      socket
+      |> assign(assigns)
+      |> assign_new(:active_tab, fn -> :kin end)
+
+    {:ok, socket}
   end
 
   @impl true
+  def handle_event("switch_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, active_tab: String.to_existing_atom(tab))}
+  end
+
   def handle_event(event, params, socket) do
     send(self(), {:mission_control_event, event, params})
     {:noreply, socket}
@@ -106,114 +115,148 @@ defmodule LoomkinWeb.MissionControlPanelComponent do
             ...
           </div>
         </div>
-        <%!-- Concierge — dedicated top card --%>
-        <div :if={@concierge_card_names != []} class="flex-shrink-0 p-3 pb-0">
-          <.live_component
-            :for={name <- @concierge_card_names}
-            module={LoomkinWeb.AgentCardComponent}
-            id={"agent-card-#{name}"}
-            card={@agent_cards[name]}
-            focused={false}
-            team_id={@active_team_id}
-            model={@agent_cards[name][:model]}
-          />
-        </div>
 
-        <%!-- System agents (weaver etc.) — compact status, no interactive buttons --%>
-        <div :if={system_card_names(assigns) != []} class="px-3 pb-2">
-          <div
-            :for={name <- system_card_names(assigns)}
-            class="flex items-center gap-2 py-1 px-2 rounded bg-surface-1/50"
+        <%!-- Tab switcher: Kin / Comms --%>
+        <div class="flex items-center gap-1 px-3 pt-2 pb-1 flex-shrink-0 border-b border-subtle">
+          <button
+            phx-click="switch_tab"
+            phx-value-tab="kin"
+            phx-target={@myself}
+            class={[
+              "flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium transition-colors interactive",
+              if(@active_tab == :kin,
+                do: "text-brand bg-brand-subtle",
+                else: "text-muted hover:text-secondary"
+              )
+            ]}
           >
-            <span class={[
-              "w-1.5 h-1.5 rounded-full flex-shrink-0",
-              system_status_dot(@agent_cards[name])
-            ]} />
-            <span class="text-[10px] font-medium text-muted truncate">
-              {format_system_name(name)}
+            <.icon name="hero-user-group-mini" class="w-3.5 h-3.5" />
+            <span>Kin</span>
+            <span class="text-[10px] tabular-nums px-1 py-0.5 rounded-full bg-surface-2 text-muted">
+              {length(@concierge_card_names) + length(@worker_card_names)}
             </span>
-            <span class="text-[9px] text-muted opacity-60 ml-auto flex-shrink-0">
-              {system_agent_status_label(@agent_cards[name])}
+          </button>
+          <button
+            phx-click="switch_tab"
+            phx-value-tab="comms"
+            phx-target={@myself}
+            class={[
+              "flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium transition-colors interactive",
+              if(@active_tab == :comms,
+                do: "text-brand bg-brand-subtle",
+                else: "text-muted hover:text-secondary"
+              )
+            ]}
+          >
+            <.icon name="hero-signal-mini" class="w-3.5 h-3.5" />
+            <span>Comms</span>
+            <span
+              :if={@comms_event_count > 0}
+              class="text-[10px] tabular-nums px-1 py-0.5 rounded-full bg-surface-2 text-muted"
+            >
+              {@comms_event_count}
             </span>
-          </div>
+          </button>
+          <div class="flex-1" />
+          {render_collab_health(assigns)}
         </div>
 
-        <%!-- Team Agents Section --%>
-        <div class="flex-shrink p-3 pb-0 overflow-y-auto max-h-[50%] min-h-[120px]">
-          <div class="flex items-center gap-2 mb-2">
-            <div class="flex items-center gap-1.5">
-              <svg class="w-3.5 h-3.5 text-muted" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M7 8a3 3 0 100-6 3 3 0 000 6zM14.5 9a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM1.615 16.428a1.224 1.224 0 01-.569-1.175 6.002 6.002 0 0111.908 0c.058.467-.172.92-.57 1.174A9.953 9.953 0 017 18a9.953 9.953 0 01-5.385-1.572zM14.5 16h-.106c.07-.297.088-.611.048-.933a7.47 7.47 0 00-1.588-3.755 4.502 4.502 0 015.874 2.636.818.818 0 01-.36.98A7.465 7.465 0 0114.5 16z" />
-              </svg>
-              <span class="text-xs font-medium text-muted uppercase tracking-wider">Kin</span>
+        <%= if @active_tab == :kin do %>
+          <%!-- Concierge — dedicated top card --%>
+          <div :if={@concierge_card_names != []} class="flex-shrink-0 p-3 pb-0">
+            <.live_component
+              :for={name <- @concierge_card_names}
+              module={LoomkinWeb.AgentCardComponent}
+              id={"agent-card-#{name}"}
+              card={@agent_cards[name]}
+              focused={false}
+              team_id={@active_team_id}
+              model={@agent_cards[name][:model]}
+            />
+          </div>
+
+          <%!-- System agents (weaver etc.) — compact status, no interactive buttons --%>
+          <div :if={system_card_names(assigns) != []} class="px-3 pb-2">
+            <div
+              :for={name <- system_card_names(assigns)}
+              class="flex items-center gap-2 py-1 px-2 rounded bg-surface-1/50"
+            >
+              <span class={[
+                "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                system_status_dot(@agent_cards[name])
+              ]} />
+              <span class="text-[10px] font-medium text-muted truncate">
+                {format_system_name(name)}
+              </span>
+              <span class="text-[9px] text-muted opacity-60 ml-auto flex-shrink-0">
+                {system_agent_status_label(@agent_cards[name])}
+              </span>
             </div>
-            <span class="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full font-medium text-muted bg-surface-2">
-              {length(@worker_card_names)}
-            </span>
-            <div class="flex-1 h-px bg-border-subtle"></div>
-            {render_collab_health(assigns)}
           </div>
 
-          <%!-- Waiting state: session exists but agents haven't spawned yet --%>
-          <div
-            :if={@concierge_card_names == [] && @worker_card_names == [] && @active_team_id}
-            class="rounded-lg py-4 px-4 text-center bg-surface-1 border border-subtle"
-          >
-            <div class="flex justify-center mb-2">
-              <div class="w-8 h-8 rounded-full bg-violet-500/15 flex items-center justify-center text-violet-400 text-xs font-bold">
-                C
+          <%!-- Team Agents Section --%>
+          <div class="flex-1 p-3 pb-0 overflow-y-auto min-h-[120px]">
+            <%!-- Waiting state: session exists but agents haven't spawned yet --%>
+            <div
+              :if={@concierge_card_names == [] && @worker_card_names == [] && @active_team_id}
+              class="rounded-lg py-4 px-4 text-center bg-surface-1 border border-subtle"
+            >
+              <div class="flex justify-center mb-2">
+                <div class="w-8 h-8 rounded-full bg-violet-500/15 flex items-center justify-center text-violet-400 text-xs font-bold">
+                  C
+                </div>
+              </div>
+              <div class="text-xs font-medium text-secondary">
+                Concierge ready
+              </div>
+              <div class="text-[10px] mt-0.5 text-muted">
+                Send a message to get started
               </div>
             </div>
-            <div class="text-xs font-medium text-secondary">
-              Concierge ready
+            <%!-- No session state --%>
+            <div
+              :if={@concierge_card_names == [] && @worker_card_names == [] && !@active_team_id}
+              class="rounded-lg border border-dashed border-subtle py-4 px-4 text-center"
+            >
+              <div class="text-muted text-xs">Start a session to meet your kin</div>
+              <div class="text-[10px] mt-0.5 text-muted">
+                Concierge + Weaver spawn automatically
+              </div>
             </div>
-            <div class="text-[10px] mt-0.5 text-muted">
-              Send a message to get started
-            </div>
-          </div>
-          <%!-- No session state --%>
-          <div
-            :if={@concierge_card_names == [] && @worker_card_names == [] && !@active_team_id}
-            class="rounded-lg border border-dashed border-subtle py-4 px-4 text-center"
-          >
-            <div class="text-muted text-xs">Start a session to meet your kin</div>
-            <div class="text-[10px] mt-0.5 text-muted">
-              Concierge + Weaver spawn automatically
-            </div>
-          </div>
 
-          <%!-- Ghost cards for dormant kin (not yet spawned) --%>
-          {render_ghost_cards(assigns)}
+            <%!-- Ghost cards for dormant kin (not yet spawned) --%>
+            {render_ghost_cards(assigns)}
 
-          <%= if @worker_card_names != [] do %>
-            <div class={[
-              "agent-card-grid grid gap-3",
-              card_grid_cols(length(@worker_card_names)),
-              any_agents_active?(@agent_cards, @worker_card_names) && "grid-alive"
-            ]}>
-              <.live_component
-                :for={name <- @worker_card_names}
-                module={LoomkinWeb.AgentCardComponent}
-                id={"agent-card-#{name}"}
-                card={@agent_cards[name]}
-                focused={false}
-                team_id={@active_team_id}
-                model={@agent_cards[name][:model]}
+            <%= if @worker_card_names != [] do %>
+              <div class={[
+                "agent-card-grid grid gap-3",
+                card_grid_cols(length(@worker_card_names)),
+                any_agents_active?(@agent_cards, @worker_card_names) && "grid-alive"
+              ]}>
+                <.live_component
+                  :for={name <- @worker_card_names}
+                  module={LoomkinWeb.AgentCardComponent}
+                  id={"agent-card-#{name}"}
+                  card={@agent_cards[name]}
+                  focused={false}
+                  team_id={@active_team_id}
+                  model={@agent_cards[name][:model]}
+                />
+              </div>
+            <% end %>
+          </div>
+        <% else %>
+          <%!-- Comms Feed (full height when active tab) --%>
+          <%= if @comms_stream do %>
+            <div class="flex-1 overflow-auto min-h-[200px]">
+              <LoomkinWeb.AgentCommsComponent.comms_feed
+                stream={@comms_stream}
+                event_count={@comms_event_count}
+                id="agent-comms"
+                root_team_id={@active_team_id}
               />
             </div>
           <% end %>
-        </div>
-
-        <%!-- Comms Feed (scrollable, takes remaining space) --%>
-        <%= if @comms_stream do %>
-          <div class="flex-1 overflow-auto min-h-[200px] border-t border-subtle">
-            <LoomkinWeb.AgentCommsComponent.comms_feed
-              stream={@comms_stream}
-              event_count={@comms_event_count}
-              id="agent-comms"
-              root_team_id={@active_team_id}
-            />
-          </div>
         <% end %>
       <% end %>
     </div>

@@ -8,27 +8,17 @@ defmodule LoomkinWeb.SessionSwitcherComponent do
   @impl true
   def update(assigns, socket) do
     prev_project_path = socket.assigns[:project_path]
-    prev_show_all = socket.assigns[:show_all_projects] || false
 
     socket =
       socket
       |> assign(assigns)
       |> assign_new(:dropdown_open, fn -> false end)
-      |> assign_new(:show_all_projects, fn -> false end)
       |> assign_new(:sessions, fn -> :not_loaded end)
 
     project_path = socket.assigns[:project_path]
-    show_all = socket.assigns[:show_all_projects]
 
-    if project_path != prev_project_path or show_all != prev_show_all or
-         socket.assigns.sessions == :not_loaded do
-      sessions =
-        if show_all || is_nil(project_path) do
-          list_all_sessions()
-        else
-          Persistence.list_sessions(project_path: project_path)
-        end
-
+    if project_path != prev_project_path or socket.assigns.sessions == :not_loaded do
+      sessions = Persistence.list_sessions(project_path: project_path)
       {:ok, assign(socket, sessions: sessions)}
     else
       {:ok, socket}
@@ -150,14 +140,6 @@ defmodule LoomkinWeb.SessionSwitcherComponent do
           No previous sessions
         </div>
 
-        <%!-- All projects toggle --%>
-        <button
-          phx-click="toggle_all_projects"
-          phx-target={@myself}
-          class="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] transition-colors interactive border-t border-subtle text-muted"
-        >
-          <span>{if @show_all_projects, do: "This project only", else: "All projects"}</span>
-        </button>
       </div>
     </div>
     """
@@ -180,24 +162,6 @@ defmodule LoomkinWeb.SessionSwitcherComponent do
   def handle_event("select_session", %{"id" => session_id}, socket) do
     send(self(), {:select_session, session_id})
     {:noreply, assign(socket, dropdown_open: false)}
-  end
-
-  def handle_event("toggle_all_projects", _params, socket) do
-    show_all = !socket.assigns.show_all_projects
-    project_path = socket.assigns[:project_path]
-
-    sessions =
-      if show_all || is_nil(project_path) do
-        list_all_sessions()
-      else
-        Persistence.list_sessions(project_path: project_path)
-      end
-
-    {:noreply, assign(socket, show_all_projects: show_all, sessions: sessions)}
-  end
-
-  defp list_all_sessions do
-    Persistence.list_sessions()
   end
 
   defp current_session_label(session_id, sessions) do

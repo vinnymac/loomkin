@@ -2699,7 +2699,13 @@ defmodule LoomkinWeb.WorkspaceLive do
   end
 
   def handle_info(:new_session, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/")}
+    project_path = socket.assigns[:project_path]
+
+    if project_path do
+      {:noreply, push_navigate(socket, to: ~p"/sessions/new?#{%{project_path: project_path}}")}
+    else
+      {:noreply, push_navigate(socket, to: ~p"/projects")}
+    end
   end
 
   def handle_info({:new_session_for_project, path}, socket) do
@@ -4254,26 +4260,41 @@ defmodule LoomkinWeb.WorkspaceLive do
           />
         <% else %>
           <%!-- Mission Control Left: Agent Cards + Comms + Composer --%>
-          <div class="flex-1 flex flex-col min-w-0 min-h-0 border-r border-subtle overflow-hidden">
-            <.live_component
-              module={LoomkinWeb.MissionControlPanelComponent}
-              id="mission-control-panel"
-              agent_cards={@agent_cards}
-              concierge_card_names={@concierge_card_names}
-              system_card_names={@system_card_names}
-              worker_card_names={@worker_card_names}
-              comms_event_count={@comms_event_count}
-              comms_stream={@streams.comms_events}
-              focused_agent={@focused_agent}
-              kin_agents={@kin_agents}
-              cached_agents={@cached_agents}
-              active_team_id={@active_team_id}
-              leader_approval_pending={@leader_approval_pending}
-              collab_health={@collab_health}
-            />
+          <div
+            id="mc-split-container"
+            class="flex-1 flex flex-col min-w-0 min-h-0 border-r border-subtle overflow-hidden"
+            phx-hook="VerticalSplit"
+          >
+            <div id="mc-top-pane" class="flex-shrink-0 overflow-hidden flex flex-col">
+              <.live_component
+                module={LoomkinWeb.MissionControlPanelComponent}
+                id="mission-control-panel"
+                agent_cards={@agent_cards}
+                concierge_card_names={@concierge_card_names}
+                system_card_names={@system_card_names}
+                worker_card_names={@worker_card_names}
+                comms_event_count={@comms_event_count}
+                comms_stream={@streams.comms_events}
+                focused_agent={@focused_agent}
+                kin_agents={@kin_agents}
+                cached_agents={@cached_agents}
+                active_team_id={@active_team_id}
+                leader_approval_pending={@leader_approval_pending}
+                collab_health={@collab_health}
+              />
+            </div>
+
+            <%!-- Drag handle --%>
+            <div
+              id="mc-split-handle"
+              class="flex-shrink-0 h-1.5 cursor-row-resize flex items-center justify-center group hover:bg-violet-500/20 active:bg-violet-500/30 transition-[background] duration-150 border-y border-subtle"
+            >
+              <div class="w-8 h-0.5 rounded-full bg-zinc-600 group-hover:bg-violet-400 group-active:bg-violet-400 transition-[background] duration-150">
+              </div>
+            </div>
 
             <%!-- Chat + Composer column --%>
-            <div class="flex-shrink-0 flex flex-col min-w-0 border-r border-subtle">
+            <div id="mc-bottom-pane" class="flex flex-col min-w-0 border-r border-subtle" style="flex: 1 1 auto; min-height: 150px;">
               <.live_component
                 module={LoomkinWeb.SessionSwitcherComponent}
                 id="session-switcher"

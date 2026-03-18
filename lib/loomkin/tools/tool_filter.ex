@@ -293,45 +293,38 @@ defmodule Loomkin.Tools.ToolFilter do
   end
 
   # Teamwork-first suggestions: guide agents toward collaboration, not workarounds.
-  defp teamwork_suggestion(role, tool_cat) do
-    case {role, tool_cat} do
-      {:researcher, :write} ->
-        "Use peer_message to ask a coder teammate to make this change, " <>
-          "or use peer_ask_question to request help. Include the exact file, " <>
-          "line numbers, and what needs to change."
+  # Always mention the concierge as fallback escalation point.
+  defp teamwork_suggestion(_role, tool_cat) do
+    case tool_cat do
+      :write ->
+        "Instead of trying workarounds, use peer_message to tell your lead or concierge " <>
+          "what you need written — they'll assign a coder to handle it. " <>
+          "If you know a coder teammate, ask them directly. " <>
+          "Describe WHAT needs to be changed, WHERE (file path + line numbers), and WHY so the coder has full context."
 
-      {:researcher, :exec} ->
-        "Use peer_message to ask a coder or tester to run this command for you. " <>
-          "Describe what you need executed and what output you're looking for."
+      :exec ->
+        "Use peer_message to ask your lead or concierge to assign a coder or tester to run this. " <>
+          "If you know a coder or tester teammate, ask them directly. " <>
+          "Describe what command you need executed and what output you're looking for."
 
-      {:reviewer, :write} ->
-        "Send your suggested fix to the coder via peer_message with the exact " <>
-          "file path, line numbers, and proposed change. They can implement it."
-
-      {:tester, :write} ->
-        "Send the fix details to a coder via peer_message. Include the failing " <>
-          "test output and what code change would fix it."
-
-      {:weaver, :write} ->
-        "Route this write request to the appropriate coder via peer_message. " <>
-          "Include file path, context, and what needs to change."
-
-      {:weaver, :exec} ->
-        "Route this command to a coder or tester via peer_message. " <>
-          "Describe what needs to be executed and why."
-
-      {:weaver, :read} ->
-        "Ask a researcher or coder to read this for you via peer_ask_question. " <>
-          "They can share the relevant content back."
-
-      {_, :lead} ->
+      :lead ->
         "Team management tools are reserved for lead/concierge roles. " <>
-          "Use peer_message to ask your lead to handle team operations, " <>
-          "or use peer_change_role if you need to take on a leadership role."
+          "Use peer_message to ask your lead or concierge to handle team operations. " <>
+          "Describe what you need coordinated and they'll take care of it."
+
+      :investigation ->
+        "Use peer_message to ask the lead or concierge to spawn a researcher for this investigation. " <>
+          "Describe what you need explored and what questions need answering."
+
+      :read ->
+        "Use peer_message to ask a researcher or coder to read this for you. " <>
+          "If you don't know who to ask, message the concierge — they'll route your request. " <>
+          "Describe what information you need and from which files."
 
       _ ->
-        "Use peer_ask_question to find a teammate with #{tool_cat} capability, " <>
-          "or use peer_change_role to request the tools you need."
+        "Use peer_message to ask your lead or concierge for help — they'll spawn or assign " <>
+          "the right specialist. If you know a teammate with #{tool_cat} capability, ask them directly. " <>
+          "Describe exactly what you need done and why."
     end
   end
 end

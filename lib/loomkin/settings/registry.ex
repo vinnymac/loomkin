@@ -116,8 +116,8 @@ defmodule Loomkin.Settings.Registry do
       why_change:
         "Increase for complex multi-step refactors. Decrease for cost control on simple tasks.",
       type: :number,
-      default: 25,
-      range: {1, 100},
+      default: 100,
+      range: {1, 200},
       step: 1,
       tab: "Agents",
       section: "Execution Limits"

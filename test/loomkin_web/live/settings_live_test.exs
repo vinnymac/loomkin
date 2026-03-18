@@ -137,7 +137,7 @@ defmodule LoomkinWeb.SettingsLiveTest do
 
       html =
         render_change(view, "update_setting", %{
-          "agents.max_iterations" => "200",
+          "agents.max_iterations" => "250",
           "_target" => ["agents.max_iterations"]
         })
 

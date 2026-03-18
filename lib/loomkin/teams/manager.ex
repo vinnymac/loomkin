@@ -490,6 +490,17 @@ defmodule Loomkin.Teams.Manager do
     end
   end
 
+  @doc """
+  Ensure nervous system processes are running for a team.
+
+  Idempotent — if processes are already running (registered in AgentRegistry),
+  they won't be started again. Used by WorkspaceServer to recover team state
+  after app restart when the ETS table is recreated.
+  """
+  def ensure_nervous_system(team_id) do
+    start_nervous_system(team_id)
+  end
+
   defp start_nervous_system(team_id) do
     if Application.get_env(:loomkin, :start_nervous_system, true) do
       components = [

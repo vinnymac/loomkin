@@ -211,6 +211,7 @@ defmodule Loomkin.Teams.Role do
     Loomkin.Tools.GenerateWriteup,
     # Team coordination
     Loomkin.Tools.TeamProgress,
+    Loomkin.Tools.TeamComms,
     Loomkin.Tools.ListTeams,
     Loomkin.Tools.CrossTeamQuery,
     # Consensus
@@ -224,6 +225,7 @@ defmodule Loomkin.Teams.Role do
     Loomkin.Tools.TeamAssign,
     Loomkin.Tools.TeamSmartAssign,
     Loomkin.Tools.TeamProgress,
+    Loomkin.Tools.TeamComms,
     Loomkin.Tools.TeamDissolve
   ]
 
@@ -298,6 +300,7 @@ defmodule Loomkin.Teams.Role do
     "team_assign" => Loomkin.Tools.TeamAssign,
     "team_smart_assign" => Loomkin.Tools.TeamSmartAssign,
     "team_progress" => Loomkin.Tools.TeamProgress,
+    "team_comms" => Loomkin.Tools.TeamComms,
     "team_dissolve" => Loomkin.Tools.TeamDissolve,
     "peer_message" => Loomkin.Tools.PeerMessage,
     "peer_discovery" => Loomkin.Tools.PeerDiscovery,
@@ -459,6 +462,14 @@ defmodule Loomkin.Teams.Role do
   - **Ask across teams**: Use `cross_team_query` to ask questions to agents in other teams
   - **When to use cross-team comms**: When you need expertise or information from agents outside your team
   - Answers from cross-team queries arrive asynchronously, just like intra-team questions
+
+  ## Task Handoff Protocol
+  When you complete a task that feeds into another agent's work:
+  1. Offload your findings/results to a keeper FIRST (via `context_offload`)
+  2. Send a `peer_message` to the receiving agent with a summary AND the keeper topic
+  3. Then complete your task with `peer_complete_task`
+
+  This ensures your work survives even if you go idle before the next agent reads it.
   """
 
   @peer_role_guidance %{
@@ -561,6 +572,16 @@ defmodule Loomkin.Teams.Role do
       - Monitor progress and unblock stuck agents
       - Synthesize results into a coherent final answer
 
+      ## Anti-Pattern: Doing Work Yourself
+      NEVER use file_read, content_search, file_search, or shell to investigate code yourself.
+      NEVER write code or make file edits. You are a MANAGER, not an individual contributor.
+      If you catch yourself reading source files or running searches — STOP and delegate.
+
+      The ONLY exceptions:
+      - Quick git status/diff to check what's changed (< 3 tool calls)
+      - decision_query, search_keepers, or context_retrieve for coordination
+      - Reading a single file to give a coder better task context
+
       ## Task Decomposition
       - Break down the user's request into clear, actionable subtasks before delegating
       - Include acceptance criteria, file paths, and expected output format for each subtask
@@ -642,6 +663,15 @@ defmodule Loomkin.Teams.Role do
       [Suggested approach or ranked options with brief rationale]
 
       Send this as soon as your research is complete — do not wait to be asked.
+
+      ## Findings Persistence — MANDATORY
+      Before completing your task, you MUST:
+      1. Call `context_offload` with a descriptive topic to persist your findings
+      2. Call `peer_discovery` with your key findings so the team sees them immediately
+      3. Include ALL findings in `peer_complete_task`'s `discoveries` field
+
+      Your findings are WORTHLESS if they die with you. Other agents and future sessions
+      depend on keepers. If you don't offload, your work is lost.
 
       ## Team Manifest
       {team_manifest}
@@ -807,6 +837,17 @@ defmodule Loomkin.Teams.Role do
       - For testing: spawn a tester agent
       - For complex tasks: spawn a full team with team_spawn
       - You are NOT an individual contributor — delegate the actual work
+
+      ## Anti-Pattern: Doing Research Yourself
+      NEVER use file_read, content_search, file_search, or shell to investigate code yourself.
+      Your job is to DELEGATE investigation to researcher agents and SYNTHESIZE their results.
+      If you catch yourself reading source files to understand a problem — STOP.
+      Spawn a researcher and describe what you need to know. Wait for findings.
+
+      The ONLY exceptions:
+      - Quick git status/diff to check what's changed (< 3 tool calls)
+      - Reading a file you're about to ask a coder to modify (to give them context)
+      - Checking team_progress or decision_query for coordination
 
       ## Decision Graph Protocol
       When you make strategic decisions or delegate work:

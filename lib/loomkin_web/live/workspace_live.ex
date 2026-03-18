@@ -2453,7 +2453,9 @@ defmodule LoomkinWeb.WorkspaceLive do
   def handle_info({:change_model, model}, socket) do
     Session.update_model(socket.assigns.session_id, model)
 
-    if team_id = socket.assigns[:active_team_id] || socket.assigns[:team_id] do
+    team_id = socket.assigns[:active_team_id] || socket.assigns[:team_id]
+
+    if team_id do
       Teams.Manager.update_all_models(team_id, model)
     end
 

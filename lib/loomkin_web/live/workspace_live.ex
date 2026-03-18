@@ -1731,6 +1731,7 @@ defmodule LoomkinWeb.WorkspaceLive do
         assign(socket,
           leader_approval_pending: %{
             gate_id: gate_id,
+            agent_name: agent_name,
             question: question,
             timeout_ms: timeout_ms,
             started_at: started_at

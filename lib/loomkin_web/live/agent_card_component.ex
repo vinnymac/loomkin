@@ -133,53 +133,307 @@ defmodule LoomkinWeb.AgentCardComponent do
     ~H"""
     <div
       id={"agent-card-compact-#{@card.name}"}
-      class="group flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors hover:bg-surface-2/50"
+      class={[
+        "group rounded-lg transition-colors",
+        if(@card[:pending_approval],
+          do: "bg-violet-950/20 ring-1 ring-violet-500/30",
+          else: "hover:bg-surface-2/50"
+        )
+      ]}
     >
-      <%!-- Mini avatar --%>
+      <%!-- Compact header row --%>
+      <div class="flex items-center gap-2.5 px-3 py-2">
+        <%!-- Mini avatar --%>
+        <div
+          class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold relative"
+          style={"background: #{@agent_color}15; color: #{@agent_color};"}
+        >
+          {String.first(@card.name) |> String.upcase()}
+          <span class={[
+            "absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-surface-0",
+            status_dot_class(@card.status)
+          ]} />
+        </div>
+
+        <%!-- Name + status --%>
+        <div class="flex-1 min-w-0 flex items-center gap-2">
+          <span
+            class="text-xs font-semibold truncate"
+            style={"color: #{@agent_color};"}
+          >
+            {@card.name}
+          </span>
+          <span class={[
+            "text-[10px] font-medium",
+            status_pill_text_class(@card.status)
+          ]}>
+            {status_label(@card.status)}
+          </span>
+          <%!-- Truncated current thought --%>
+          <span
+            :if={@card.content_type == :thinking && @card.latest_content && !@card[:pending_approval]}
+            class="text-[10px] text-muted/40 truncate max-w-[180px]"
+          >
+            {String.slice(@card.latest_content || "", 0, 60)}
+          </span>
+        </div>
+
+        <%!-- Reply button --%>
+        <button
+          phx-click="reply_to_card_agent"
+          phx-value-agent={@card.name}
+          phx-value-team-id={@team_id}
+          aria-label={"Reply to #{@card.name}"}
+          class="text-muted hover:text-brand p-1 rounded-lg hover:bg-surface-3 flex-shrink-0 transition-colors opacity-40 group-hover:opacity-100"
+        >
+          <.icon name="hero-chat-bubble-left-mini" class="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      <%!-- Checkpoint approval panel (non-spawn) — inline in compact card --%>
       <div
-        class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold relative"
-        style={"background: #{@agent_color}15; color: #{@agent_color};"}
+        :if={
+          @card.status == :approval_pending && @card[:pending_approval] &&
+            @card[:pending_approval][:type] != :spawn_gate
+        }
+        class="border-t border-violet-500/20 bg-violet-950/15 px-3 py-3 flex flex-col gap-2"
       >
-        {String.first(@card.name) |> String.upcase()}
-        <span class={[
-          "absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-surface-0",
-          status_dot_class(@card.status)
-        ]} />
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-[11px] font-semibold text-violet-400">Approval required</span>
+          <span
+            id={"compact-countdown-#{@card.name}"}
+            phx-hook="CountdownTimer"
+            data-deadline-at={
+              @card[:pending_approval][:started_at] + @card[:pending_approval][:timeout_ms]
+            }
+            class="text-[10px] font-mono text-violet-300/70 tabular-nums"
+          >
+            --:--
+          </span>
+        </div>
+
+        <p class="text-xs text-zinc-300 leading-relaxed">
+          {@card[:pending_approval][:question]}
+        </p>
+
+        <div class="flex items-center gap-1.5 mt-1">
+          <button
+            phx-click="approve_card_agent"
+            phx-value-gate_id={@card[:pending_approval][:gate_id]}
+            phx-value-agent={@card.name}
+            phx-value-context=""
+            phx-disable-with="Approving..."
+            class="px-3 py-1.5 text-[11px] font-medium rounded-md bg-violet-600/80 hover:bg-violet-600 text-white border border-violet-500/50 transition-colors cursor-pointer"
+          >
+            Approve
+          </button>
+          <button
+            phx-click={JS.toggle(to: "#compact-approve-ctx-#{@card.name}")}
+            type="button"
+            class="px-3 py-1.5 text-[11px] font-medium rounded-md bg-violet-800/60 hover:bg-violet-700/60 text-violet-200 border border-violet-600/30 transition-colors cursor-pointer"
+          >
+            Approve w/ Context
+          </button>
+          <button
+            phx-click={JS.toggle(to: "#compact-deny-ctx-#{@card.name}")}
+            type="button"
+            class="px-3 py-1.5 text-[11px] font-medium rounded-md bg-rose-900/40 hover:bg-rose-800/50 text-rose-300 border border-rose-700/30 transition-colors cursor-pointer"
+          >
+            Deny
+          </button>
+        </div>
+
+        <form
+          id={"compact-approve-ctx-#{@card.name}"}
+          phx-submit="approve_card_agent"
+          class="hidden flex-col gap-1.5 mt-1"
+        >
+          <textarea
+            name="context"
+            rows="2"
+            placeholder="Optional context for the agent..."
+            class="w-full text-xs bg-zinc-900/60 border border-violet-500/30 rounded px-2 py-1.5 text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-violet-400/60"
+          ></textarea>
+          <input type="hidden" name="gate_id" value={@card[:pending_approval][:gate_id]} />
+          <input type="hidden" name="agent" value={@card.name} />
+          <button
+            type="submit"
+            phx-disable-with="Approving..."
+            class="self-start px-3 py-1 text-[11px] font-medium rounded-md bg-violet-600/80 hover:bg-violet-600 text-white border border-violet-500/50 transition-colors cursor-pointer"
+          >
+            Send Approval
+          </button>
+        </form>
+
+        <form
+          id={"compact-deny-ctx-#{@card.name}"}
+          phx-submit="deny_card_agent"
+          class="hidden flex-col gap-1.5 mt-1"
+        >
+          <textarea
+            name="reason"
+            rows="2"
+            placeholder="Reason for denial (optional)..."
+            class="w-full text-xs bg-zinc-900/60 border border-rose-700/30 rounded px-2 py-1.5 text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-rose-600/50"
+          ></textarea>
+          <input type="hidden" name="gate_id" value={@card[:pending_approval][:gate_id]} />
+          <input type="hidden" name="agent" value={@card.name} />
+          <button
+            type="submit"
+            phx-disable-with="Denying..."
+            class="self-start px-3 py-1 text-[11px] font-medium rounded bg-rose-900/50 hover:bg-rose-800/60 text-rose-300 border border-rose-700/30 transition-colors cursor-pointer"
+          >
+            Confirm Denial
+          </button>
+        </form>
       </div>
 
-      <%!-- Name + status --%>
-      <div class="flex-1 min-w-0 flex items-center gap-2">
-        <span
-          class="text-xs font-semibold truncate"
-          style={"color: #{@agent_color};"}
-        >
-          {@card.name}
-        </span>
-        <span class={[
-          "text-[10px] font-medium",
-          status_pill_text_class(@card.status)
-        ]}>
-          {status_label(@card.status)}
-        </span>
-        <%!-- Truncated current thought --%>
-        <span
-          :if={@card.content_type == :thinking && @card.latest_content}
-          class="text-[10px] text-muted/40 truncate max-w-[180px]"
-        >
-          {String.slice(@card.latest_content || "", 0, 60)}
-        </span>
-      </div>
-
-      <%!-- Reply button --%>
-      <button
-        phx-click="reply_to_card_agent"
-        phx-value-agent={@card.name}
-        phx-value-team-id={@team_id}
-        aria-label={"Reply to #{@card.name}"}
-        class="text-muted hover:text-brand p-1 rounded-lg hover:bg-surface-3 flex-shrink-0 transition-colors opacity-40 group-hover:opacity-100"
+      <%!-- Spawn gate panel — inline in compact card --%>
+      <div
+        :if={
+          @card.status == :approval_pending && @card[:pending_approval] &&
+            @card[:pending_approval][:type] == :spawn_gate
+        }
+        class="border-t border-violet-500/20 bg-violet-950/15 px-3 py-3 flex flex-col gap-2"
       >
-        <.icon name="hero-chat-bubble-left-mini" class="w-3.5 h-3.5" />
-      </button>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-[11px] font-semibold text-violet-400">Spawn approval required</span>
+          <span
+            id={"compact-spawn-countdown-#{@card.name}"}
+            phx-hook="CountdownTimer"
+            data-deadline-at={
+              @card[:pending_approval][:started_at] + @card[:pending_approval][:timeout_ms]
+            }
+            class="text-[10px] font-mono text-violet-300/70 tabular-nums"
+          >
+            --:--
+          </span>
+        </div>
+
+        <div class="flex items-center justify-between gap-2">
+          <p class="text-sm font-medium text-zinc-200">
+            {@card[:pending_approval][:team_name]}
+          </p>
+          <span class="text-[10px] tabular-nums text-violet-300/80 flex-shrink-0">
+            {"~$#{Float.round(@card[:pending_approval][:estimated_cost] || 0.0, 2)}"}
+          </span>
+        </div>
+
+        <p
+          :if={@card[:pending_approval][:purpose]}
+          class="text-xs text-zinc-300 leading-relaxed"
+        >
+          {@card[:pending_approval][:purpose]}
+        </p>
+
+        <div class="flex flex-wrap gap-1.5">
+          <span
+            :for={role <- @card[:pending_approval][:roles] || []}
+            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-300 border border-violet-500/20"
+          >
+            <span class="text-zinc-400">{Map.get(role, :name) || Map.get(role, "name")}</span>
+            <span class="text-violet-400/60">{Map.get(role, :role) || Map.get(role, "role")}</span>
+          </span>
+        </div>
+
+        <p
+          :if={@card[:pending_approval][:limit_warning] == :depth}
+          class="text-xs text-amber-400"
+        >
+          Approaching maximum nesting depth
+        </p>
+        <p
+          :if={@card[:pending_approval][:limit_warning] == :agents}
+          class="text-xs text-amber-400"
+        >
+          Approaching maximum agents per team
+        </p>
+
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={@card[:pending_approval][:auto_approve_spawns]}
+            phx-click="toggle_auto_approve_spawns"
+            phx-value-agent={@card.name}
+            phx-value-enabled={
+              if @card[:pending_approval][:auto_approve_spawns], do: "false", else: "true"
+            }
+            class="rounded border-zinc-600 bg-zinc-800 text-violet-500 focus:ring-violet-500/50"
+          />
+          <span class="text-xs text-zinc-300">Auto-approve future spawns</span>
+        </label>
+
+        <div class="flex items-center gap-1.5 mt-1">
+          <button
+            phx-click="approve_spawn"
+            phx-value-gate_id={@card[:pending_approval][:gate_id]}
+            phx-value-agent={@card.name}
+            phx-value-context=""
+            phx-disable-with="Approving..."
+            class="px-3 py-1.5 text-[11px] font-medium rounded-md bg-violet-600/80 hover:bg-violet-600 text-white border border-violet-500/50 transition-colors cursor-pointer"
+          >
+            Approve
+          </button>
+          <button
+            phx-click={JS.toggle(to: "#compact-spawn-approve-ctx-#{@card.name}")}
+            type="button"
+            class="px-3 py-1.5 text-[11px] font-medium rounded-md bg-violet-800/60 hover:bg-violet-700/60 text-violet-200 border border-violet-600/30 transition-colors cursor-pointer"
+          >
+            Approve w/ Context
+          </button>
+          <button
+            phx-click={JS.toggle(to: "#compact-spawn-deny-ctx-#{@card.name}")}
+            type="button"
+            class="px-3 py-1.5 text-[11px] font-medium rounded-md bg-rose-900/40 hover:bg-rose-800/50 text-rose-300 border border-rose-700/30 transition-colors cursor-pointer"
+          >
+            Deny
+          </button>
+        </div>
+
+        <form
+          id={"compact-spawn-approve-ctx-#{@card.name}"}
+          phx-submit="approve_spawn"
+          class="hidden flex-col gap-1.5 mt-1"
+        >
+          <textarea
+            name="context"
+            rows="2"
+            placeholder="Optional context for the spawn..."
+            class="w-full text-xs bg-zinc-900/60 border border-violet-500/30 rounded px-2 py-1.5 text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-violet-400/60"
+          ></textarea>
+          <input type="hidden" name="gate_id" value={@card[:pending_approval][:gate_id]} />
+          <input type="hidden" name="agent" value={@card.name} />
+          <button
+            type="submit"
+            phx-disable-with="Approving..."
+            class="self-start px-3 py-1 text-[11px] font-medium rounded-md bg-violet-600/80 hover:bg-violet-600 text-white border border-violet-500/50 transition-colors cursor-pointer"
+          >
+            Send Approval
+          </button>
+        </form>
+
+        <form
+          id={"compact-spawn-deny-ctx-#{@card.name}"}
+          phx-submit="deny_spawn"
+          class="hidden flex-col gap-1.5 mt-1"
+        >
+          <textarea
+            name="reason"
+            rows="2"
+            placeholder="Reason for denial (optional)..."
+            class="w-full text-xs bg-zinc-900/60 border border-rose-700/30 rounded px-2 py-1.5 text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-rose-600/50"
+          ></textarea>
+          <input type="hidden" name="gate_id" value={@card[:pending_approval][:gate_id]} />
+          <input type="hidden" name="agent" value={@card.name} />
+          <button
+            type="submit"
+            phx-disable-with="Denying..."
+            class="self-start px-3 py-1 text-[11px] font-medium rounded bg-rose-900/50 hover:bg-rose-800/60 text-rose-300 border border-rose-700/30 transition-colors cursor-pointer"
+          >
+            Confirm Denial
+          </button>
+        </form>
+      </div>
     </div>
     """
   end

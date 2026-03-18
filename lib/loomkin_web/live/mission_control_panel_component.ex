@@ -157,26 +157,51 @@ defmodule LoomkinWeb.MissionControlPanelComponent do
         <div
           :if={@leader_approval_pending}
           data-testid="leader-approval-banner"
-          class="flex-shrink-0 mx-4 mt-3 px-4 py-3 rounded-xl border border-violet-500/50 bg-violet-950/40 backdrop-blur-sm flex items-start gap-3"
+          class="flex-shrink-0 mx-4 mt-3 px-4 py-3 rounded-xl border border-violet-500/50 bg-violet-950/40 backdrop-blur-sm flex flex-col gap-2.5"
         >
-          <div class="w-2 h-2 rounded-full bg-violet-400 animate-pulse mt-1 flex-shrink-0"></div>
-          <div class="flex-1 min-w-0">
-            <p class="text-xs font-semibold text-violet-300 uppercase tracking-wider mb-1">
-              Team leader awaiting your approval
-            </p>
-            <p class="text-sm text-gray-200 truncate">
-              {@leader_approval_pending.question}
-            </p>
+          <div class="flex items-start gap-3">
+            <div class="w-2 h-2 rounded-full bg-violet-400 animate-pulse mt-1 flex-shrink-0"></div>
+            <div class="flex-1 min-w-0">
+              <p class="text-xs font-semibold text-violet-300 uppercase tracking-wider mb-1">
+                Team leader awaiting your approval
+              </p>
+              <p class="text-sm text-gray-200">
+                {@leader_approval_pending.question}
+              </p>
+            </div>
+            <div
+              class="text-xs tabular-nums text-violet-400 flex-shrink-0 mt-0.5"
+              phx-hook="CountdownTimer"
+              id={"leader-banner-timer-#{@leader_approval_pending.gate_id}"}
+              data-deadline-at={
+                @leader_approval_pending.started_at + @leader_approval_pending.timeout_ms
+              }
+            >
+              ...
+            </div>
           </div>
-          <div
-            class="text-xs tabular-nums text-violet-400 flex-shrink-0 mt-0.5"
-            phx-hook="CountdownTimer"
-            id={"leader-banner-timer-#{@leader_approval_pending.gate_id}"}
-            data-deadline-at={
-              @leader_approval_pending.started_at + @leader_approval_pending.timeout_ms
-            }
-          >
-            ...
+          <%!-- Approve / Deny buttons --%>
+          <div class="flex items-center gap-1.5 ml-5">
+            <button
+              phx-click="approve_card_agent"
+              phx-value-gate_id={@leader_approval_pending.gate_id}
+              phx-value-agent={@leader_approval_pending[:agent_name] || "lead"}
+              phx-value-context=""
+              phx-disable-with="Approving..."
+              class="px-3 py-1.5 text-[11px] font-medium rounded-md bg-violet-600/80 hover:bg-violet-600 text-white border border-violet-500/50 transition-colors cursor-pointer"
+            >
+              Approve
+            </button>
+            <button
+              phx-click="deny_card_agent"
+              phx-value-gate_id={@leader_approval_pending.gate_id}
+              phx-value-agent={@leader_approval_pending[:agent_name] || "lead"}
+              phx-value-reason=""
+              phx-disable-with="Denying..."
+              class="px-3 py-1.5 text-[11px] font-medium rounded-md bg-rose-900/40 hover:bg-rose-800/50 text-rose-300 border border-rose-700/30 transition-colors cursor-pointer"
+            >
+              Deny
+            </button>
           </div>
         </div>
 

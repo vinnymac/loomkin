@@ -23,7 +23,6 @@ defmodule LoomkinWeb.ComposerComponent do
       |> assign_new(:show_agent_picker, fn -> false end)
       |> assign_new(:schedule_popover, fn -> false end)
       |> assign_new(:schedule_delay_minutes, fn -> 5 end)
-      |> assign_new(:broadcast_mode, fn -> false end)
       |> assign_new(:agent_count, fn -> 0 end)
 
     {:ok, socket}
@@ -93,16 +92,6 @@ defmodule LoomkinWeb.ComposerComponent do
     <div class="flex-shrink-0 composer-container">
       <.render_last_message_strip last_user_message={@last_user_message} />
       <form phx-submit="send_message" phx-target={@myself} class="px-4 pb-4 pt-2 sm:px-6 sm:pb-5">
-        <%!-- Broadcast indicator --%>
-        <div
-          :if={@broadcast_mode && !@reply_target}
-          class="flex items-center gap-2 mb-3 px-3 py-1.5 rounded-xl text-xs text-amber-300/60 bg-amber-500/[0.04]"
-        >
-          <span class="text-amber-400/60 text-[13px]">&#x1F4E2;</span>
-          <span class="font-medium">Broadcasting to team</span>
-          <span class="text-amber-400/30 ml-0.5">({@agent_count})</span>
-        </div>
-
         <%!-- Reply indicator with role icon --%>
         <div
           :if={@reply_target}
@@ -140,10 +129,14 @@ defmodule LoomkinWeb.ComposerComponent do
                   @reply_target && "composer-icon-btn-active"
                 ]}
                 data-tooltip={
-                  if @reply_target, do: "Replying to #{@reply_target.agent}", else: "Send to team"
+                  if @reply_target,
+                    do: "Replying to #{@reply_target.agent}",
+                    else: "Send to concierge"
                 }
                 aria-label={
-                  if @reply_target, do: "Replying to #{@reply_target.agent}", else: "Send to team"
+                  if @reply_target,
+                    do: "Replying to #{@reply_target.agent}",
+                    else: "Send to concierge"
                 }
               >
                 <.icon name="hero-at-symbol-mini" class="w-4 h-4" />
@@ -161,25 +154,6 @@ defmodule LoomkinWeb.ComposerComponent do
                     Send to
                   </span>
                 </div>
-                <button
-                  type="button"
-                  phx-click="select_reply_target"
-                  phx-value-agent="team"
-                  phx-target={@myself}
-                  class={[
-                    "flex items-center gap-2 w-full px-3 py-2 text-left text-xs transition-colors text-primary hover:bg-surface-3/30",
-                    !@reply_target && "bg-surface-3/20"
-                  ]}
-                >
-                  <span class="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-emerald-400" />
-                  <span class="font-medium">Entire Kin</span>
-                  <span
-                    :if={@agent_count > 0}
-                    class="ml-auto text-[10px] text-muted bg-surface-2/50 px-1.5 py-0.5 rounded-full"
-                  >
-                    {@agent_count}
-                  </span>
-                </button>
                 <button
                   :for={agent <- @picker_agents}
                   type="button"
@@ -210,11 +184,11 @@ defmodule LoomkinWeb.ComposerComponent do
               <textarea
                 name="text"
                 rows="1"
-                aria-label="Message to team"
+                aria-label="Message to concierge"
                 placeholder={
                   if @reply_target,
                     do: "Reply to #{@reply_target.agent}...",
-                    else: "What should we work on?"
+                    else: "Message concierge..."
                 }
                 class="composer-input"
                 phx-hook="ShiftEnterSubmit"

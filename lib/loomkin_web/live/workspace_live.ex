@@ -82,8 +82,6 @@ defmodule LoomkinWeb.WorkspaceLive do
         kin_agents: [],
         # File explorer drawer
         file_drawer_open: false,
-        # Broadcast mode: true in team sessions, false in solo
-        broadcast_mode: params["team_id"] != nil,
         # Leader approval gate pending (set when lead agent hits approval gate, nil otherwise)
         leader_approval_pending: nil,
         # Kill switch confirmation state (nil or %{team_id, agent_count, scope})
@@ -239,8 +237,7 @@ defmodule LoomkinWeb.WorkspaceLive do
         |> assign(
           team_id: team_id_from_session,
           active_team_id: team_id_from_session,
-          channel_bindings: bindings,
-          broadcast_mode: true
+          channel_bindings: bindings
         )
       else
         socket
@@ -545,125 +542,65 @@ defmodule LoomkinWeb.WorkspaceLive do
         end
 
       nil ->
-        if socket.assigns.broadcast_mode do
-          team_id = socket.assigns[:active_team_id] || socket.assigns.team_id
-          agents = Loomkin.Teams.Manager.list_agents(team_id)
-          session_id = socket.assigns.session_id
+        # Default: route to concierge via session
+        session_id = socket.assigns.session_id
 
-          # Always route through session for persistence + concierge handling
-          task =
-            Task.Supervisor.async_nolink(Loomkin.Teams.TaskSupervisor, fn ->
-              Session.send_message(session_id, trimmed)
-            end)
-
-          # Additionally broadcast to non-bootstrap agents (for multi-agent awareness)
-          Enum.each(agents, fn agent ->
-            if agent.name != "concierge" do
-              Task.Supervisor.start_child(Loomkin.Teams.TaskSupervisor, fn ->
-                try do
-                  Loomkin.Teams.Agent.inject_broadcast(
-                    agent.pid,
-                    "[Broadcast from Human]: #{trimmed}"
-                  )
-                catch
-                  :exit, _ -> :ok
-                end
-              end)
-            end
+        task =
+          Task.Supervisor.async_nolink(Loomkin.Teams.TaskSupervisor, fn ->
+            Session.send_message(session_id, trimmed)
           end)
 
-          user_msg = %{role: :user, content: trimmed}
-          updated_messages = Enum.take(socket.assigns.messages ++ [user_msg], -@max_messages)
+        user_msg = %{role: :user, content: trimmed}
 
-          broadcast_event = %{
-            id: Ecto.UUID.generate(),
-            type: :human_broadcast,
-            agent: "You",
-            content: trimmed,
-            timestamp: DateTime.utc_now(),
-            expanded: false,
-            metadata: %{from: "You", to: "All Agents", agent_count: length(agents)}
-          }
+        # Push user message to activity feed
+        user_event = %{
+          id: Ecto.UUID.generate(),
+          type: :message,
+          agent: "You",
+          content: trimmed,
+          timestamp: DateTime.utc_now(),
+          expanded: false,
+          metadata: %{from: "You", to: "Concierge"}
+        }
 
-          context_info =
-            Loomkin.Session.ContextWindow.context_usage_info(
-              socket.assigns.model,
-              updated_messages
-            )
+        socket = push_activity_event(socket, user_event)
 
-          {:noreply,
-           socket
-           |> push_activity_event(broadcast_event)
-           |> assign(
-             input_text: "",
-             async_task: task,
-             status: :thinking,
-             messages: updated_messages,
-             context_info: context_info,
-             last_user_message: %{text: trimmed, to: "All Agents"}
-           )
-           |> push_event("clear-input", %{})}
-        else
-          # Normal flow: send through Architect pipeline
-          session_id = socket.assigns.session_id
+        # Append preserves chronological order required by ChatComponent stream diffing
+        updated_messages = Enum.take(socket.assigns.messages ++ [user_msg], -@max_messages)
 
-          task =
-            Task.Supervisor.async_nolink(Loomkin.Teams.TaskSupervisor, fn ->
-              Session.send_message(session_id, trimmed)
-            end)
+        context_info =
+          Loomkin.Session.ContextWindow.context_usage_info(
+            socket.assigns.model,
+            updated_messages
+          )
 
-          user_msg = %{role: :user, content: trimmed}
+        # Auto-title page from first user message
+        socket =
+          if socket.assigns.messages == [] do
+            title =
+              trimmed
+              |> String.split(~r/[\n\r]/, parts: 2)
+              |> List.first("")
+              |> String.trim()
+              |> String.slice(0, 60)
 
-          # Push user message to activity feed
-          user_event = %{
-            id: Ecto.UUID.generate(),
-            type: :message,
-            agent: "You",
-            content: trimmed,
-            timestamp: DateTime.utc_now(),
-            expanded: false,
-            metadata: %{from: "You", to: "Kin"}
-          }
+            title = if title == "", do: "New session", else: title
+            assign(socket, page_title: title)
+          else
+            socket
+          end
 
-          socket = push_activity_event(socket, user_event)
-
-          # Append preserves chronological order required by ChatComponent stream diffing
-          updated_messages = Enum.take(socket.assigns.messages ++ [user_msg], -@max_messages)
-
-          context_info =
-            Loomkin.Session.ContextWindow.context_usage_info(
-              socket.assigns.model,
-              updated_messages
-            )
-
-          # Auto-title page from first user message
-          socket =
-            if socket.assigns.messages == [] do
-              title =
-                trimmed
-                |> String.split(~r/[\n\r]/, parts: 2)
-                |> List.first("")
-                |> String.trim()
-                |> String.slice(0, 60)
-
-              title = if title == "", do: "New session", else: title
-              assign(socket, page_title: title)
-            else
-              socket
-            end
-
-          {:noreply,
-           socket
-           |> assign(
-             input_text: "",
-             async_task: task,
-             status: :thinking,
-             messages: updated_messages,
-             context_info: context_info,
-             last_user_message: %{text: trimmed, to: "Kin"}
-           )
-           |> push_event("clear-input", %{})}
-        end
+        {:noreply,
+         socket
+         |> assign(
+           input_text: "",
+           async_task: task,
+           status: :thinking,
+           messages: updated_messages,
+           context_info: context_info,
+           last_user_message: %{text: trimmed, to: "Concierge"}
+         )
+         |> push_event("clear-input", %{})}
     end
   end
 
@@ -3350,15 +3287,14 @@ defmodule LoomkinWeb.WorkspaceLive do
   end
 
   def handle_info({:composer_event, "select_reply_target", %{"agent" => "team"}}, socket) do
-    {:noreply, assign(socket, reply_target: nil, broadcast_mode: true)}
+    {:noreply, assign(socket, reply_target: nil)}
   end
 
   def handle_info(
         {:composer_event, "select_reply_target", %{"agent" => agent_name, "team-id" => team_id}},
         socket
       ) do
-    {:noreply,
-     assign(socket, reply_target: %{agent: agent_name, team_id: team_id}, broadcast_mode: false)}
+    {:noreply, assign(socket, reply_target: %{agent: agent_name, team_id: team_id})}
   end
 
   def handle_info({:composer_event, "toggle_queue_from_composer", _params}, socket) do
@@ -4125,7 +4061,6 @@ defmodule LoomkinWeb.WorkspaceLive do
             session_id={@session_id}
             status={@status}
             agent_cards={@agent_cards}
-            broadcast_mode={@broadcast_mode}
             agent_count={length(@cached_agents)}
           />
 

@@ -520,7 +520,11 @@ defmodule Loomkin.Session.ContextWindow do
 
   defp ensure_cache_table do
     if :ets.whereis(@cache_table) == :undefined do
-      :ets.new(@cache_table, [:set, :public, :named_table])
+      try do
+        :ets.new(@cache_table, [:set, :public, :named_table])
+      rescue
+        ArgumentError -> :ok
+      end
     end
 
     :ok

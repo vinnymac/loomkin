@@ -1579,7 +1579,7 @@ defmodule Loomkin.Teams.Agent do
     if is_from_child_team and state.role in [:lead, :concierge] do
       handle_info({:child_team_task_completed, sig.data}, state)
     else
-      handle_info({:sub_team_completed, sig.data[:sub_team_id] || sig.data.task_id}, state)
+      handle_info({:sub_team_completed, sig.data[:sub_team_id] || sig.data[:task_id]}, state)
     end
   end
 

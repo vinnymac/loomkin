@@ -158,7 +158,6 @@ defmodule LoomkinWeb.Live.WorkspaceLiveAskUserTest do
         leader_approval_pending: nil,
         cached_agents: [],
         pending_questions: pending_questions,
-        broadcast_mode: false,
         activity_event_count: 0,
         activity_known_agents: [],
         buffered_activity_events: [],

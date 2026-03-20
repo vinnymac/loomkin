@@ -229,4 +229,121 @@ defmodule Loomkin.Teams.LearningTest do
       assert hd(results).name == "many"
     end
   end
+
+  # ── avg_cost_by_scope/1 ─────────────────────────────────────────────
+
+  describe "avg_cost_by_scope/1" do
+    test "returns average cost for tasks of a given scope tier" do
+      for cost <- [0.10, 0.20, 0.30, 0.40, 0.50] do
+        insert_metric(%{scope_tier: "scoped", cost_usd: cost})
+      end
+
+      avg = Learning.avg_cost_by_scope(:scoped)
+      assert_in_delta avg, 0.30, 0.001
+    end
+
+    test "accepts string tier" do
+      insert_metric(%{scope_tier: "surgical", cost_usd: 0.05})
+      insert_metric(%{scope_tier: "surgical", cost_usd: 0.15})
+
+      avg = Learning.avg_cost_by_scope("surgical")
+      assert_in_delta avg, 0.10, 0.001
+    end
+
+    test "returns nil when no data exists for tier" do
+      assert Learning.avg_cost_by_scope(:transformative) == nil
+    end
+
+    test "ignores records without scope_tier" do
+      insert_metric(%{cost_usd: 0.50})
+      insert_metric(%{scope_tier: "broad", cost_usd: 0.20})
+
+      assert Learning.avg_cost_by_scope(:broad) == 0.20
+    end
+  end
+
+  # ── recommend_tier/1 ───────────────────────────────────────────────
+
+  describe "recommend_tier/1" do
+    test "returns :learned with avg cost when 5+ records exist" do
+      for _ <- 1..6 do
+        insert_metric(%{scope_tier: "surgical", cost_usd: 0.04})
+      end
+
+      assert {:learned, "surgical", avg_cost} =
+               Learning.recommend_tier(%{task_description: "fix typo", file_matches: 1})
+
+      assert_in_delta avg_cost, 0.04, 0.001
+    end
+
+    test "returns :default when insufficient data" do
+      insert_metric(%{scope_tier: "broad", cost_usd: 0.50})
+
+      assert {:default, "broad"} =
+               Learning.recommend_tier(%{task_description: "refactor module", file_matches: 15})
+    end
+
+    test "infers correct tiers from file_matches" do
+      # surgical: <= 2 files
+      assert {:default, "surgical"} =
+               Learning.recommend_tier(%{task_description: "x", file_matches: 1})
+
+      # scoped: 3-8 files
+      assert {:default, "scoped"} =
+               Learning.recommend_tier(%{task_description: "x", file_matches: 5})
+
+      # broad: 9-20 files
+      assert {:default, "broad"} =
+               Learning.recommend_tier(%{task_description: "x", file_matches: 12})
+
+      # transformative: > 20 files
+      assert {:default, "transformative"} =
+               Learning.recommend_tier(%{task_description: "x", file_matches: 25})
+    end
+
+    test "old records without scope_tier do not break queries" do
+      # Insert records without scope_tier
+      for _ <- 1..10 do
+        insert_metric(%{cost_usd: 0.10})
+      end
+
+      # Should return :default since none of the old records have scope_tier
+      assert {:default, "scoped"} =
+               Learning.recommend_tier(%{task_description: "update helpers", file_matches: 4})
+    end
+  end
+
+  # ── record_task_result/1 with scope fields ─────────────────────────
+
+  describe "record_task_result/1 with scope fields" do
+    test "accepts scope_tier and files_touched" do
+      assert {:ok, metric} =
+               Learning.record_task_result(%{
+                 team_id: "team-1",
+                 agent_name: "coder",
+                 model: "anthropic:claude-sonnet-4-6",
+                 task_type: "code_edit",
+                 success: true,
+                 scope_tier: "scoped",
+                 files_touched: 5
+               })
+
+      assert metric.scope_tier == "scoped"
+      assert metric.files_touched == 5
+    end
+
+    test "scope fields are optional and default to nil" do
+      assert {:ok, metric} =
+               Learning.record_task_result(%{
+                 team_id: "team-1",
+                 agent_name: "coder",
+                 model: "anthropic:claude-sonnet-4-6",
+                 task_type: "code_edit",
+                 success: true
+               })
+
+      assert metric.scope_tier == nil
+      assert metric.files_touched == nil
+    end
+  end
 end

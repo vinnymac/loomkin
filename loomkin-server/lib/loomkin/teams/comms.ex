@@ -434,6 +434,4 @@ defmodule Loomkin.Teams.Comms do
       {k, v} -> {k, v}
     end)
   end
-
-  defp redact_payload(payload), do: payload
 end

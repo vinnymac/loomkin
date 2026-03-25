@@ -280,10 +280,12 @@ defmodule Loomkin.Providers.OpenAICompatibleProvider do
           ]
 
           headers =
-            if @provider_auth_key do
-              [{"Authorization", "Bearer " <> @provider_auth_key} | headers]
-            else
-              headers
+            case @provider_auth_key do
+              key when is_binary(key) and key != "" ->
+                [{"Authorization", "Bearer " <> key} | headers]
+
+              _ ->
+                headers
             end
 
           {:ok,
@@ -333,10 +335,12 @@ defmodule Loomkin.Providers.OpenAICompatibleProvider do
         end
 
         defp maybe_add_auth(request) do
-          if @provider_auth_key do
-            Req.Request.put_header(request, "Authorization", "Bearer " <> @provider_auth_key)
-          else
-            request
+          case @provider_auth_key do
+            key when is_binary(key) and key != "" ->
+              Req.Request.put_header(request, "Authorization", "Bearer " <> key)
+
+            _ ->
+              request
           end
         end
       end

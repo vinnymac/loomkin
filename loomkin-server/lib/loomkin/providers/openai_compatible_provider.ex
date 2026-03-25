@@ -280,12 +280,19 @@ defmodule Loomkin.Providers.OpenAICompatibleProvider do
           ]
 
           headers =
+<<<<<<< HEAD
             case @provider_auth_key do
               key when is_binary(key) and key != "" ->
                 [{"Authorization", "Bearer " <> key} | headers]
 
               _ ->
                 headers
+=======
+            if @provider_auth_key do
+              [{"Authorization", "Bearer " <> @provider_auth_key} | headers]
+            else
+              headers
+>>>>>>> 47f52549 (feat: add openai-compatible provider infrastructure)
             end
 
           {:ok,
@@ -304,6 +311,7 @@ defmodule Loomkin.Providers.OpenAICompatibleProvider do
              )}
         end
 
+<<<<<<< HEAD
         # WORKAROUND: req_llm's default_decode_stream_event silently drops SSE events
         # containing {"error": {...}} payloads (returns []). This intercepts error events
         # from OpenAI-compatible endpoints and raises so call_llm's try/rescue can
@@ -316,6 +324,8 @@ defmodule Loomkin.Providers.OpenAICompatibleProvider do
           raise RuntimeError, message: "#{@provider_name} streaming error: #{message}"
         end
 
+=======
+>>>>>>> 47f52549 (feat: add openai-compatible provider infrastructure)
         def decode_stream_event(event, model),
           do: ReqLLM.Providers.OpenAI.decode_stream_event(event, model)
 
@@ -347,12 +357,19 @@ defmodule Loomkin.Providers.OpenAICompatibleProvider do
         end
 
         defp maybe_add_auth(request) do
+<<<<<<< HEAD
           case @provider_auth_key do
             key when is_binary(key) and key != "" ->
               Req.Request.put_header(request, "Authorization", "Bearer " <> key)
 
             _ ->
               request
+=======
+          if @provider_auth_key do
+            Req.Request.put_header(request, "Authorization", "Bearer " <> @provider_auth_key)
+          else
+            request
+>>>>>>> 47f52549 (feat: add openai-compatible provider infrastructure)
           end
         end
       end

@@ -1,18 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useStore } from "zustand";
 import { useSessionStore } from "../stores/sessionStore.js";
-import { useAppStore } from "../stores/appStore.js";
 import { useAgentStore } from "../stores/agentStore.js";
 import { useConversationStore } from "../stores/conversationStore.js";
-import { joinChannel } from "../lib/socket.js";
+import { useChannelStore } from "../stores/channelStore.js";
 
 import type { ConversationInfo, Message } from "../lib/types.js";
 
-let notifyCounter = 0;
-
-function notify(content: string) {
-  const msg: Message = {
-    id: `notify-${++notifyCounter}`,
+function makeNotifyMessage(content: string, counter: { current: number }): Message {
+  return {
+    id: `notify-${++counter.current}`,
     role: "system",
     content,
     tool_calls: null,
@@ -21,47 +18,45 @@ function notify(content: string) {
     agent_name: null,
     inserted_at: new Date().toISOString(),
   };
-  useSessionStore.getState().addMessage(msg);
 }
 
 /**
- * Subscribes to agent-related events on the session channel.
- * Updates the agent store with real-time status, tool use, and task info.
- *
- * Note: Agent events are received on the same `session:<id>` channel
- * as message events — the backend forwards agent.** signals there.
- * This hook piggybacks on the existing channel connection.
+ * Subscribes to agent-related events on the shared Phoenix channel.
+ * The channel lifecycle is owned by useChannelLifecycle — this hook
+ * only attaches/detaches its event handlers.
  */
 export function useAgentChannel() {
-  const sessionId = useStore(useSessionStore, (s) => s.sessionId);
-  const connectionState = useStore(useAppStore, (s) => s.connectionState);
-  const isConnected = connectionState === "connected";
+  const channel = useStore(useChannelStore, (s) => s.channel);
   const agentsMap = useStore(useAgentStore, (s) => s.agents);
+  const notifyCounter = useRef(0);
 
   useEffect(() => {
-    if (!sessionId || !isConnected) return;
+    if (!channel) return;
 
-    const topic = `session:${sessionId}`;
-    const channel = joinChannel(topic);
+    const ch = channel; // non-null binding for closures
+    const events: string[] = [];
 
-    // Track subscribed event names for cleanup.
-    // Phoenix channel.on() TS types don't expose the ref number,
-    // so we remove all handlers per event name on cleanup.
-    const subscribedEvents: string[] = [];
+    function notify(content: string) {
+      useSessionStore.getState().addMessage(makeNotifyMessage(content, notifyCounter));
+    }
 
     function on<T>(event: string, handler: (payload: T) => void) {
-      channel.on(event, handler as (payload: Record<string, unknown>) => void);
-      subscribedEvents.push(event);
+      ch.on(event, handler as (payload: Record<string, unknown>) => void);
+      events.push(event);
     }
 
     // --- Agent events ---
 
-    on<{ agent_name: string; status: string }>("agent_status", (payload) => {
+    on<{ agent_name: string; status: string; pause_queued?: boolean }>("agent_status", (payload) => {
       useAgentStore.getState().upsertAgent(payload.agent_name, {
         status: payload.status,
+        pauseQueued: payload.pause_queued,
       });
       if (payload.status === "done" || payload.status === "completed") {
         notify(`✓ ${payload.agent_name} finished`);
+      }
+      if (payload.status === "paused") {
+        notify(`⏸ ${payload.agent_name} paused`);
       }
     });
 
@@ -218,14 +213,51 @@ export function useAgentChannel() {
       },
     );
 
+    // --- Approval gate events ---
+
+    on<{ gate_id: string; agent_name: string; question: string; timeout_ms: number; team_id: string }>(
+      "approval_requested",
+      (payload) => {
+        useSessionStore.getState().addPendingApproval({
+          ...payload,
+          received_at: Date.now(),
+        });
+        notify(`🔒 ${payload.agent_name} requests approval: ${payload.question}`);
+      },
+    );
+
+    on<{ gate_id: string; agent_name: string; outcome: string; team_id: string }>(
+      "approval_resolved",
+      (payload) => {
+        useSessionStore.getState().removePendingApproval(payload.gate_id);
+      },
+    );
+
+    on<{ gate_id: string; agent_name: string; team_name: string; roles: Array<{ role: string; name?: string }>; estimated_cost: number; purpose: string | null; timeout_ms: number; limit_warning: string | null; team_id: string }>(
+      "spawn_gate_requested",
+      (payload) => {
+        useSessionStore.getState().addPendingSpawnGate({
+          ...payload,
+          received_at: Date.now(),
+        });
+        const roleNames = payload.roles.map((r) => r.role).join(", ");
+        notify(`🔒 ${payload.agent_name} wants to spawn: ${roleNames} ($${payload.estimated_cost.toFixed(4)})`);
+      },
+    );
+
+    on<{ gate_id: string; agent_name: string; outcome: string; team_id: string }>(
+      "spawn_gate_resolved",
+      (payload) => {
+        useSessionStore.getState().removePendingSpawnGate(payload.gate_id);
+      },
+    );
+
     return () => {
-      // Remove all listeners to prevent ghost handlers on reconnect.
-      // We remove all handlers per event since Phoenix TS types don't expose refs.
-      for (const event of new Set(subscribedEvents)) {
-        channel.off(event);
+      for (const event of new Set(events)) {
+        ch.off(event);
       }
     };
-  }, [sessionId, isConnected]);
+  }, [channel]);
 
   return { agents: Array.from(agentsMap.values()) };
 }

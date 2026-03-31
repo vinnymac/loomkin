@@ -4,6 +4,7 @@ import { render } from "ink";
 import meow from "meow";
 import pc from "picocolors";
 import { App } from "./app.js";
+import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import {
   isAuthenticated,
   setConfig,
@@ -325,10 +326,15 @@ async function main() {
   })();
 
   // Render the TUI
-  const { waitUntilExit } = render(<App />, {
-    exitOnCtrlC: false,
-    patchConsole: false,
-  });
+  const { waitUntilExit } = render(
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>,
+    {
+      exitOnCtrlC: false,
+      patchConsole: false,
+    },
+  );
   await waitUntilExit();
 }
 

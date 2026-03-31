@@ -1,5 +1,12 @@
 import { createStore } from "zustand";
-import type { Message, ToolCall, PermissionRequest, AskUserQuestion } from "../lib/types.js";
+import type {
+  Message,
+  ToolCall,
+  PermissionRequest,
+  AskUserQuestion,
+  ApprovalRequest,
+  SpawnGateRequest,
+} from "../lib/types.js";
 
 export interface SessionState {
   sessionId: string | null;
@@ -9,6 +16,8 @@ export interface SessionState {
   pendingToolCalls: ToolCall[];
   pendingPermissions: PermissionRequest[];
   pendingQuestions: AskUserQuestion[];
+  pendingApprovals: ApprovalRequest[];
+  pendingSpawnGates: SpawnGateRequest[];
   scrollOffset: number;
 
   setSessionId: (id: string | null) => void;
@@ -29,6 +38,12 @@ export interface SessionState {
   addPendingQuestion: (question: AskUserQuestion) => void;
   removePendingQuestion: (questionId: string) => void;
   clearPendingQuestions: () => void;
+  addPendingApproval: (request: ApprovalRequest) => void;
+  removePendingApproval: (gateId: string) => void;
+  clearPendingApprovals: () => void;
+  addPendingSpawnGate: (request: SpawnGateRequest) => void;
+  removePendingSpawnGate: (gateId: string) => void;
+  clearPendingSpawnGates: () => void;
   setScrollOffset: (offset: number) => void;
 }
 
@@ -40,6 +55,8 @@ export const sessionStore = createStore<SessionState>((set) => ({
   pendingToolCalls: [],
   pendingPermissions: [],
   pendingQuestions: [],
+  pendingApprovals: [],
+  pendingSpawnGates: [],
   scrollOffset: 0,
 
   setSessionId: (sessionId) => set({ sessionId }),
@@ -123,6 +140,30 @@ export const sessionStore = createStore<SessionState>((set) => ({
   clearPendingPermissions: () => set({ pendingPermissions: [] }),
 
   clearPendingQuestions: () => set({ pendingQuestions: [] }),
+
+  addPendingApproval: (request) =>
+    set((state) => ({
+      pendingApprovals: [...state.pendingApprovals, request],
+    })),
+
+  removePendingApproval: (gateId) =>
+    set((state) => ({
+      pendingApprovals: state.pendingApprovals.filter((a) => a.gate_id !== gateId),
+    })),
+
+  clearPendingApprovals: () => set({ pendingApprovals: [] }),
+
+  addPendingSpawnGate: (request) =>
+    set((state) => ({
+      pendingSpawnGates: [...state.pendingSpawnGates, request],
+    })),
+
+  removePendingSpawnGate: (gateId) =>
+    set((state) => ({
+      pendingSpawnGates: state.pendingSpawnGates.filter((g) => g.gate_id !== gateId),
+    })),
+
+  clearPendingSpawnGates: () => set({ pendingSpawnGates: [] }),
 
   setScrollOffset: (scrollOffset) => set({ scrollOffset }),
 }));

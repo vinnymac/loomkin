@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, useApp, useInput, useStdout } from "ink";
 import { useStore } from "zustand";
 import { StatusBar } from "./components/StatusBar.js";
@@ -7,9 +7,11 @@ import { SplitPaneLayout } from "./components/SplitPaneLayout.js";
 import { ErrorBanner } from "./components/ErrorBanner.js";
 import { PermissionPrompt } from "./components/PermissionPrompt.js";
 import { AskUserPrompt } from "./components/AskUserPrompt.js";
+import { ApprovalGatePrompt } from "./components/ApprovalGatePrompt.js";
 import { InputArea } from "./components/InputArea.js";
 import { ProcessingStatus } from "./components/ProcessingStatus.js";
 import { useConnection } from "./hooks/useConnection.js";
+import { useChannelLifecycle } from "./hooks/useChannelLifecycle.js";
 import { useSessionChannel } from "./hooks/useSessionChannel.js";
 import { useAgentChannel } from "./hooks/useAgentChannel.js";
 import { useAppStore } from "./stores/appStore.js";
@@ -48,18 +50,44 @@ import "./commands/dashboard.js";
 import "./commands/conversations.js";
 import "./commands/kin.js";
 import "./commands/kindred.js";
+import "./commands/pause.js";
+import "./commands/resume.js";
+import "./commands/steer.js";
+import "./commands/inject.js";
+import "./commands/cancel.js";
+import "./commands/gates.js";
 
 let messageCounter = 0;
 
+function useTerminalSize() {
+  const { stdout } = useStdout();
+  const [size, setSize] = useState({
+    cols: stdout?.columns ?? 80,
+    rows: stdout?.rows ?? 24,
+  });
+
+  useEffect(() => {
+    if (!stdout) return;
+    const onResize = () => {
+      setSize({ cols: stdout.columns ?? 80, rows: stdout.rows ?? 24 });
+    };
+    stdout.on("resize", onResize);
+    return () => {
+      stdout.off("resize", onResize);
+    };
+  }, [stdout]);
+
+  return size;
+}
+
 export function App() {
   const { exit } = useApp();
-  const { stdout } = useStdout();
-  // Use concrete terminal height so yoga can properly constrain the layout.
-  // "100%" is unreliable in Ink because percentage resolution requires the
-  // yoga root to have a fixed size first.
-  const termHeight = stdout?.rows ?? 24;
-  const termWidth = stdout?.columns ?? 80;
+  const { cols: termWidth, rows: termHeight } = useTerminalSize();
   const { isConnected } = useConnection();
+
+  // Single channel lifecycle owner — must be before useSessionChannel/useAgentChannel
+  useChannelLifecycle();
+
   const {
     messages,
     isStreaming,
@@ -70,7 +98,12 @@ export function App() {
     setModel,
     respondPermission,
     answerQuestion,
+    respondApproval,
+    respondSpawnGate,
   } = useSessionChannel();
+
+  const pendingApprovals = useStore(useSessionStore, (s) => s.pendingApprovals);
+  const pendingSpawnGates = useStore(useSessionStore, (s) => s.pendingSpawnGates);
 
   // Subscribe to agent status updates
   useAgentChannel();
@@ -211,6 +244,25 @@ export function App() {
           onAnswer={answerQuestion}
         />
       )}
+      {pendingApprovals.length > 0 &&
+        !pendingPermissions.length &&
+        !pendingQuestions.length && (
+          <ApprovalGatePrompt
+            type="approval"
+            gate={pendingApprovals[0]}
+            onRespond={respondApproval}
+          />
+        )}
+      {pendingSpawnGates.length > 0 &&
+        !pendingPermissions.length &&
+        !pendingQuestions.length &&
+        !pendingApprovals.length && (
+          <ApprovalGatePrompt
+            type="spawn_gate"
+            gate={pendingSpawnGates[0]}
+            onRespond={respondSpawnGate}
+          />
+        )}
       <InputArea onSubmit={handleSubmit} commandContext={commandContext} />
       <ProcessingStatus />
       <StatusBar />

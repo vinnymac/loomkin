@@ -2,16 +2,16 @@ import { useEffect, useCallback } from "react";
 import { useStore } from "zustand";
 import { useSessionStore } from "../stores/sessionStore.js";
 import { useAppStore } from "../stores/appStore.js";
-import { joinChannel, leaveChannel } from "../lib/socket.js";
+import { useChannelStore } from "../stores/channelStore.js";
 import type { Message, ToolCall, PermissionRequest, AskUserQuestion } from "../lib/types.js";
-import type { Channel } from "phoenix";
 
-let currentChannel: Channel | null = null;
-
+/**
+ * Subscribes to session-level events on the shared Phoenix channel.
+ * The channel lifecycle is owned by useChannelLifecycle — this hook
+ * only attaches/detaches its event handlers.
+ */
 export function useSessionChannel() {
-  const sessionId = useStore(useSessionStore, (s) => s.sessionId);
-  const connectionState = useStore(useAppStore, (s) => s.connectionState);
-  const isConnected = connectionState === "connected";
+  const channel = useStore(useChannelStore, (s) => s.channel);
   const messages = useStore(useSessionStore, (s) => s.messages);
   const isStreaming = useStore(useSessionStore, (s) => s.isStreaming);
   const pendingToolCalls = useStore(useSessionStore, (s) => s.pendingToolCalls);
@@ -19,26 +19,25 @@ export function useSessionChannel() {
   const pendingQuestions = useStore(useSessionStore, (s) => s.pendingQuestions);
 
   useEffect(() => {
-    if (!sessionId || !isConnected) return;
+    if (!channel) return;
 
-    const topic = `session:${sessionId}`;
-    const channel = joinChannel(topic, {}, (resp) => {
-      if (resp.model && typeof resp.model === "string") {
-        useAppStore.getState().setModel(resp.model);
-      }
-    });
-    currentChannel = channel;
+    const events: string[] = [];
 
-    channel.on("new_message", (payload: { message: Message }) => {
+    const ch = channel; // non-null binding for closures
+
+    function on(event: string, handler: (payload: Record<string, unknown>) => void) {
+      ch.on(event, handler);
+      events.push(event);
+    }
+
+    on("new_message", (raw) => {
+      const payload = raw as { message: Message };
       const store = useSessionStore.getState();
-      // A completed assistant message means the response cycle is done
       if (payload.message.role === "assistant") {
         store.setPendingResponse(false);
         store.setStreaming(false);
       }
-      const existing = store.messages.find(
-        (m) => m.id === payload.message.id,
-      );
+      const existing = store.messages.find((m) => m.id === payload.message.id);
       if (existing) {
         store.updateMessage(payload.message.id, payload.message);
       } else {
@@ -46,81 +45,63 @@ export function useSessionChannel() {
       }
     });
 
-    channel.on("message_updated", (payload: { message: Message }) => {
-      useSessionStore
-        .getState()
-        .updateMessage(payload.message.id, payload.message);
+    on("message_updated", (raw) => {
+      const payload = raw as { message: Message };
+      useSessionStore.getState().updateMessage(payload.message.id, payload.message);
     });
 
-    channel.on(
-      "stream_start",
-      (payload: { message_id?: string }) => {
-        const store = useSessionStore.getState();
-        store.setPendingResponse(false);
-        store.setStreaming(true);
-        if (payload.message_id) {
-          store.startStreamingMessage(payload.message_id);
-        }
-      },
-    );
+    on("stream_start", (raw) => {
+      const payload = raw as { message_id?: string };
+      const store = useSessionStore.getState();
+      store.setPendingResponse(false);
+      store.setStreaming(true);
+      if (payload.message_id) {
+        store.startStreamingMessage(payload.message_id);
+      }
+    });
 
-    channel.on(
-      "stream_token",
-      (payload: { message_id?: string; token: string }) => {
-        const store = useSessionStore.getState();
-        if (payload.message_id) {
-          store.appendStreamContent(payload.message_id, payload.token);
-        } else {
-          // Streaming without a message_id — append to latest assistant message
-          const msgs = store.messages;
-          const last = msgs[msgs.length - 1];
-          if (last?.role === "assistant") {
-            store.appendStreamContent(last.id, payload.token);
-          }
+    on("stream_token", (raw) => {
+      const payload = raw as { message_id?: string; token: string };
+      const store = useSessionStore.getState();
+      if (payload.message_id) {
+        store.appendStreamContent(payload.message_id, payload.token);
+      } else {
+        const msgs = store.messages;
+        const last = msgs[msgs.length - 1];
+        if (last?.role === "assistant") {
+          store.appendStreamContent(last.id, payload.token);
         }
-      },
-    );
+      }
+    });
 
-    channel.on("stream_end", () => {
+    on("stream_end", () => {
       const store = useSessionStore.getState();
       store.setPendingResponse(false);
       store.setStreaming(false);
     });
 
-    channel.on(
-      "tool_call_started",
-      (payload: { tool_call: ToolCall }) => {
-        useSessionStore.getState().addPendingToolCall(payload.tool_call);
-      },
-    );
+    on("tool_call_started", (raw) => {
+      const payload = raw as { tool_call: ToolCall };
+      useSessionStore.getState().addPendingToolCall(payload.tool_call);
+    });
 
-    channel.on(
-      "tool_call_completed",
-      (payload: { tool_call: ToolCall }) => {
-        useSessionStore
-          .getState()
-          .removePendingToolCall(payload.tool_call.id);
-      },
-    );
+    on("tool_call_completed", (raw) => {
+      const payload = raw as { tool_call: ToolCall };
+      useSessionStore.getState().removePendingToolCall(payload.tool_call.id);
+    });
 
-    // Permission request from agent needing tool approval
-    channel.on(
-      "permission_request",
-      (payload: PermissionRequest) => {
-        useSessionStore.getState().addPendingPermission(payload);
-      },
-    );
+    on("permission_request", (raw) => {
+      const payload = raw as unknown as PermissionRequest;
+      useSessionStore.getState().addPendingPermission(payload);
+    });
 
-    // Agent asking the user a question
-    channel.on(
-      "ask_user",
-      (payload: AskUserQuestion) => {
-        useSessionStore.getState().addPendingQuestion(payload);
-      },
-    );
+    on("ask_user", (raw) => {
+      const payload = raw as unknown as AskUserQuestion;
+      useSessionStore.getState().addPendingQuestion(payload);
+    });
 
-    // LLM error — clear pending state so the UI doesn't get stuck
-    channel.on("llm_error", (payload: { error: string }) => {
+    on("llm_error", (raw) => {
+      const payload = raw as { error: string };
       const store = useSessionStore.getState();
       store.setPendingResponse(false);
       store.setStreaming(false);
@@ -137,19 +118,21 @@ export function useSessionChannel() {
     });
 
     return () => {
-      currentChannel = null;
-      leaveChannel(topic);
+      for (const event of new Set(events)) {
+        ch.off(event);
+      }
     };
-  }, [sessionId, isConnected]);
+  }, [channel]);
 
+  // Callbacks use channelStore.getState().getChannel() for always-live reference
   const sendMessage = useCallback((content: string, targetAgent?: string) => {
-    if (!currentChannel) return;
+    const ch = useChannelStore.getState().getChannel();
+    if (!ch) return;
 
     const payload: Record<string, string> = { content };
     if (targetAgent) payload.target_agent = targetAgent;
 
-    currentChannel
-      .push("send_message", payload)
+    ch.push("send_message", payload)
       .receive("ok", () => {
         useSessionStore.getState().setPendingResponse(true);
       })
@@ -174,16 +157,17 @@ export function useSessionChannel() {
   }, []);
 
   const setModel = useCallback((model: string) => {
-    if (!currentChannel) return;
-    currentChannel.push("set_model", { model });
+    const ch = useChannelStore.getState().getChannel();
+    if (!ch) return;
+    ch.push("set_model", { model });
   }, []);
 
   const respondPermission = useCallback(
     (requestId: string, action: "allow_once" | "allow_always" | "deny") => {
-      if (!currentChannel) return;
+      const ch = useChannelStore.getState().getChannel();
+      if (!ch) return;
 
-      currentChannel
-        .push("permission_response", { id: requestId, action })
+      ch.push("permission_response", { id: requestId, action })
         .receive("ok", () => {
           useSessionStore.getState().removePendingPermission(requestId);
         })
@@ -206,10 +190,10 @@ export function useSessionChannel() {
 
   const answerQuestion = useCallback(
     (questionId: string, answer: string) => {
-      if (!currentChannel) return;
+      const ch = useChannelStore.getState().getChannel();
+      if (!ch) return;
 
-      currentChannel
-        .push("ask_user_answer", { question_id: questionId, answer })
+      ch.push("ask_user_answer", { question_id: questionId, answer })
         .receive("ok", () => {
           useSessionStore.getState().removePendingQuestion(questionId);
         })
@@ -230,6 +214,38 @@ export function useSessionChannel() {
     [],
   );
 
+  const respondApproval = useCallback(
+    (gateId: string, outcome: "approved" | "denied", context?: string, reason?: string) => {
+      const ch = useChannelStore.getState().getChannel();
+      if (!ch) return;
+
+      ch.push("approval_response", { gate_id: gateId, outcome, context, reason })
+        .receive("ok", () => {
+          useSessionStore.getState().removePendingApproval(gateId);
+        })
+        .receive("error", () => {
+          useSessionStore.getState().removePendingApproval(gateId);
+        });
+    },
+    [],
+  );
+
+  const respondSpawnGate = useCallback(
+    (gateId: string, outcome: "approved" | "denied", reason?: string) => {
+      const ch = useChannelStore.getState().getChannel();
+      if (!ch) return;
+
+      ch.push("spawn_gate_response", { gate_id: gateId, outcome, reason })
+        .receive("ok", () => {
+          useSessionStore.getState().removePendingSpawnGate(gateId);
+        })
+        .receive("error", () => {
+          useSessionStore.getState().removePendingSpawnGate(gateId);
+        });
+    },
+    [],
+  );
+
   return {
     messages,
     isStreaming,
@@ -240,5 +256,7 @@ export function useSessionChannel() {
     setModel,
     respondPermission,
     answerQuestion,
+    respondApproval,
+    respondSpawnGate,
   };
 }

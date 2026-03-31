@@ -246,6 +246,144 @@ defmodule LoomkinWeb.SessionChannel do
     end
   end
 
+  # --- Agent lifecycle commands ---
+
+  def handle_in("pause_agent", %{"agent_name" => agent_name}, socket) do
+    case find_session_agent(socket, agent_name) do
+      {:ok, pid} ->
+        Loomkin.Teams.Agent.request_pause(pid)
+        {:reply, :ok, socket}
+
+      :error ->
+        {:reply, {:error, %{reason: "agent not found: #{agent_name}"}}, socket}
+    end
+  end
+
+  def handle_in("force_pause_agent", %{"agent_name" => agent_name}, socket) do
+    case find_session_agent(socket, agent_name) do
+      {:ok, pid} ->
+        Task.Supervisor.start_child(Loomkin.Teams.TaskSupervisor, fn ->
+          Loomkin.Teams.Agent.force_pause(pid)
+        end)
+
+        {:reply, :ok, socket}
+
+      :error ->
+        {:reply, {:error, %{reason: "agent not found: #{agent_name}"}}, socket}
+    end
+  end
+
+  def handle_in("resume_agent", %{"agent_name" => agent_name} = params, socket) do
+    case find_session_agent(socket, agent_name) do
+      {:ok, pid} ->
+        guidance = params["guidance"]
+
+        opts =
+          if guidance && guidance != "",
+            do: [guidance: guidance],
+            else: []
+
+        Task.Supervisor.start_child(Loomkin.Teams.TaskSupervisor, fn ->
+          Loomkin.Teams.Agent.resume(pid, opts)
+        end)
+
+        {:reply, :ok, socket}
+
+      :error ->
+        {:reply, {:error, %{reason: "agent not found: #{agent_name}"}}, socket}
+    end
+  end
+
+  def handle_in("steer_agent", %{"agent_name" => agent_name, "guidance" => guidance}, socket) do
+    case find_session_agent(socket, agent_name) do
+      {:ok, pid} ->
+        Task.Supervisor.start_child(Loomkin.Teams.TaskSupervisor, fn ->
+          Loomkin.Teams.Agent.steer(pid, guidance)
+        end)
+
+        {:reply, :ok, socket}
+
+      :error ->
+        {:reply, {:error, %{reason: "agent not found: #{agent_name}"}}, socket}
+    end
+  end
+
+  def handle_in("inject_guidance", %{"agent_name" => agent_name, "text" => text}, socket) do
+    case find_session_agent(socket, agent_name) do
+      {:ok, pid} ->
+        Task.Supervisor.start_child(Loomkin.Teams.TaskSupervisor, fn ->
+          Loomkin.Teams.Agent.inject_guidance(pid, text)
+        end)
+
+        {:reply, :ok, socket}
+
+      :error ->
+        {:reply, {:error, %{reason: "agent not found: #{agent_name}"}}, socket}
+    end
+  end
+
+  def handle_in("cancel_agent", %{"agent_name" => agent_name}, socket) do
+    case find_session_agent(socket, agent_name) do
+      {:ok, pid} ->
+        Task.Supervisor.start_child(Loomkin.Teams.TaskSupervisor, fn ->
+          Loomkin.Teams.Agent.cancel(pid)
+        end)
+
+        {:reply, :ok, socket}
+
+      :error ->
+        {:reply, {:error, %{reason: "agent not found: #{agent_name}"}}, socket}
+    end
+  end
+
+  # --- Gate responses ---
+
+  def handle_in(
+        "approval_response",
+        %{"gate_id" => gate_id, "outcome" => outcome} = params,
+        socket
+      ) do
+    outcome_atom = if outcome == "approved", do: :approved, else: :denied
+
+    case Registry.lookup(Loomkin.Teams.AgentRegistry, {:approval_gate, gate_id}) do
+      [{pid, _}] ->
+        decision = %{
+          outcome: outcome_atom,
+          context: params["context"],
+          reason: params["reason"]
+        }
+
+        send(pid, {:approval_response, gate_id, decision})
+        {:reply, :ok, socket}
+
+      [] ->
+        {:reply, {:error, %{reason: "gate expired or not found"}}, socket}
+    end
+  end
+
+  def handle_in(
+        "spawn_gate_response",
+        %{"gate_id" => gate_id, "outcome" => outcome} = params,
+        socket
+      ) do
+    outcome_atom = if outcome == "approved", do: :approved, else: :denied
+
+    case Registry.lookup(Loomkin.Teams.AgentRegistry, {:spawn_gate, gate_id}) do
+      [{pid, _}] ->
+        decision = %{
+          outcome: outcome_atom,
+          context: params["context"],
+          reason: params["reason"]
+        }
+
+        send(pid, {:spawn_gate_response, gate_id, decision})
+        {:reply, :ok, socket}
+
+      [] ->
+        {:reply, {:error, %{reason: "gate expired or not found"}}, socket}
+    end
+  end
+
   # --- Signal forwarding ---
 
   # Unwrap signal bus delivery tuples
@@ -618,6 +756,66 @@ defmodule LoomkinWeb.SessionChannel do
     {:noreply, socket}
   end
 
+  # --- Gate signal forwarding ---
+
+  def handle_info(%Jido.Signal{type: "agent.approval.requested"} = sig, socket) do
+    if sig.data[:team_id] == socket.assigns[:team_id] do
+      push(socket, "approval_requested", %{
+        gate_id: sig.data[:gate_id],
+        agent_name: sig.data[:agent_name],
+        question: sig.data[:question] || "",
+        timeout_ms: sig.data[:timeout_ms] || 300_000,
+        team_id: sig.data[:team_id]
+      })
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_info(%Jido.Signal{type: "agent.approval.resolved"} = sig, socket) do
+    if sig.data[:team_id] == socket.assigns[:team_id] do
+      push(socket, "approval_resolved", %{
+        gate_id: sig.data[:gate_id],
+        agent_name: sig.data[:agent_name],
+        outcome: to_string(sig.data[:outcome] || ""),
+        team_id: sig.data[:team_id]
+      })
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_info(%Jido.Signal{type: "agent.spawn.gate.requested"} = sig, socket) do
+    if sig.data[:team_id] == socket.assigns[:team_id] do
+      push(socket, "spawn_gate_requested", %{
+        gate_id: sig.data[:gate_id],
+        agent_name: sig.data[:agent_name],
+        team_name: sig.data[:team_name] || "",
+        roles: sig.data[:roles] || [],
+        estimated_cost: sig.data[:estimated_cost] || 0,
+        purpose: sig.data[:purpose],
+        timeout_ms: sig.data[:timeout_ms] || 300_000,
+        limit_warning: sig.data[:limit_warning],
+        team_id: sig.data[:team_id]
+      })
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_info(%Jido.Signal{type: "agent.spawn.gate.resolved"} = sig, socket) do
+    if sig.data[:team_id] == socket.assigns[:team_id] do
+      push(socket, "spawn_gate_resolved", %{
+        gate_id: sig.data[:gate_id],
+        agent_name: sig.data[:agent_name],
+        outcome: to_string(sig.data[:outcome] || ""),
+        team_id: sig.data[:team_id]
+      })
+    end
+
+    {:noreply, socket}
+  end
+
   # Catch-all for unhandled signals
   def handle_info(%Jido.Signal{}, socket), do: {:noreply, socket}
 
@@ -646,6 +844,13 @@ defmodule LoomkinWeb.SessionChannel do
     e ->
       Logger.warning("[SessionChannel] ensure_session_started error: #{inspect(e)}")
       :error
+  end
+
+  defp find_session_agent(socket, agent_name) do
+    case socket.assigns[:team_id] do
+      nil -> :error
+      team_id -> Loomkin.Teams.Manager.find_agent(team_id, agent_name)
+    end
   end
 
   defp ensure_team_id(session, session_id, project_path) do

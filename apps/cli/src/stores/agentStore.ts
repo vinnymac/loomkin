@@ -11,6 +11,7 @@ export interface AgentInfo {
   tokensUsed?: number;
   costUsd?: number;
   lastError?: string;
+  pauseQueued?: boolean;
   updatedAt: string;
 }
 

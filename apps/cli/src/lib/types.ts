@@ -270,6 +270,30 @@ export interface ConversationSummary {
   recommended_actions?: string[];
 }
 
+// --- Approval gate types ---
+
+export interface ApprovalRequest {
+  gate_id: string;
+  agent_name: string;
+  question: string;
+  timeout_ms: number;
+  team_id: string;
+  received_at: number;
+}
+
+export interface SpawnGateRequest {
+  gate_id: string;
+  agent_name: string;
+  team_name: string;
+  roles: Array<{ role: string; name?: string }>;
+  estimated_cost: number;
+  purpose: string | null;
+  timeout_ms: number;
+  limit_warning: string | null;
+  team_id: string;
+  received_at: number;
+}
+
 // --- Kin types ---
 
 export interface KinAgent {

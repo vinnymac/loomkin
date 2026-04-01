@@ -29,15 +29,22 @@ register({
 
     useAppStore.getState().setPlanMode(enable);
 
+    const model = useAppStore.getState().model;
+    const modelLabel = model
+      ? model.includes(":")
+        ? model.split(":")[1]
+        : model
+      : "the assistant";
+
     if (enable) {
       ctx.addSystemMessage(
         pc.cyan("Plan mode enabled") +
-          " — Claude will present a plan for approval before executing",
+          ` — ${modelLabel} will present a plan for approval before executing`,
       );
     } else {
       ctx.addSystemMessage(
         pc.dim("Plan mode disabled") +
-          " — Claude will execute without a planning step",
+          ` — ${modelLabel} will execute without a planning step`,
       );
     }
   },

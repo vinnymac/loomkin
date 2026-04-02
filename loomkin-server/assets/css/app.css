@@ -138,6 +138,44 @@ body {
 }
 
 /* ══════════════════════════════════════════
+   The Night Loom — Homepage
+   ══════════════════════════════════════════ */
+@keyframes owlAppear {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Gentle thread drift — each line sways independently */
+@keyframes threadDrift1 { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
+@keyframes threadDrift2 { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes threadDrift3 { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
+@keyframes threadDrift4 { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+.loom-thread-1 { animation: threadDrift1 12s ease-in-out infinite; }
+.loom-thread-2 { animation: threadDrift2 15s ease-in-out infinite; }
+.loom-thread-3 { animation: threadDrift3 18s ease-in-out infinite; }
+.loom-thread-4 { animation: threadDrift4 14s ease-in-out infinite; }
+.loom-thread-5 { animation: threadDrift1 20s ease-in-out infinite; }
+.loom-thread-6 { animation: threadDrift2 16s ease-in-out infinite; }
+
+/* ══════════════════════════════════════════
    Focus Rings — Soft Glow
    ══════════════════════════════════════════ */
 *:focus-visible {

@@ -198,7 +198,7 @@ defmodule LoomkinWeb.HomeLive do
         Welcome to <span class="font-semibold">Loomkin</span>
       </h1>
       <p class="text-sm max-w-md mx-auto leading-relaxed mb-8" style="color: var(--text-muted);">
-        AI-powered team knowledge base. Your agents organize meeting notes, decisions, and documentation — you browse the results.
+        AI agent teams that work alongside yours. Orchestrate, delegate, and build — together.
       </p>
       <.link
         href={~p"/users/log-in"}

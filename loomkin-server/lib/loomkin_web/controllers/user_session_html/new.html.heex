@@ -56,10 +56,16 @@
         </div>
         <button
           type="submit"
-          class="w-full py-2.5 text-xs font-mono uppercase tracking-wider transition-all hover:tracking-[0.2em]"
-          style="color: var(--brand); border: 1px solid var(--brand); background: transparent;"
+          class="group w-full relative py-3 text-xs font-mono transition-all"
+          style="color: var(--text-primary);"
         >
-          send magic link →
+          <%!-- Thread that pulls through on hover --%>
+          <span class="absolute left-0 top-1/2 w-0 group-hover:w-full h-px transition-all duration-500" style="background: var(--brand);" />
+          <span class="relative flex items-center justify-center gap-3">
+            <span class="w-4 h-px group-hover:w-8 transition-all duration-300" style="background: var(--accent-amber);" />
+            <span class="tracking-wider">send magic link</span>
+            <span class="w-4 h-px group-hover:w-8 transition-all duration-300" style="background: var(--accent-amber);" />
+          </span>
         </button>
       </div>
     </.form>
@@ -107,22 +113,30 @@
             placeholder="••••••••"
           />
         </div>
-        <div class="flex gap-3">
+        <div class="flex gap-4 justify-center pt-1">
           <button
             type="submit"
             name={@form[:remember_me].name}
             value="true"
-            class="flex-1 py-2.5 text-xs font-mono uppercase tracking-wider transition-all"
-            style="color: var(--surface-0); background: var(--brand);"
+            class="group relative text-xs font-mono transition-all py-2"
+            style="color: var(--text-primary);"
           >
-            remember me
+            <span class="relative z-10 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full transition-all group-hover:scale-150" style="background: var(--accent-emerald); box-shadow: 0 0 0 0 var(--accent-emerald); transition: box-shadow 0.3s, transform 0.3s;" />
+              remember me
+            </span>
+            <span class="absolute bottom-0 left-0 w-0 group-hover:w-full h-px transition-all duration-300" style="background: var(--accent-emerald);" />
           </button>
           <button
             type="submit"
-            class="flex-1 py-2.5 text-xs font-mono uppercase tracking-wider transition-all"
-            style="color: var(--text-muted); border: 1px solid var(--border-default); background: transparent;"
+            class="group relative text-xs font-mono transition-all py-2"
+            style="color: var(--text-muted);"
           >
-            one-time
+            <span class="relative z-10 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full border transition-all group-hover:scale-150" style="border-color: var(--text-muted);" />
+              just this once
+            </span>
+            <span class="absolute bottom-0 left-0 w-0 group-hover:w-full h-px transition-all duration-300" style="background: var(--text-muted);" />
           </button>
         </div>
       </div>

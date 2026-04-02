@@ -351,18 +351,12 @@ defmodule LoomkinWeb.HomeLive do
       >
         <.link
           href={~p"/users/register"}
-          class="group inline-flex items-center gap-3 px-6 py-3 rounded-full transition-all"
-          style="border: 1px solid var(--border-subtle); background: var(--surface-1);"
+          class="group inline-flex items-center gap-4 py-3 font-mono text-xs transition-all"
+          style="color: var(--text-primary);"
         >
-          <span class="text-sm" style="color: var(--text-secondary);">
-            enter the workshop
-          </span>
-          <span
-            class="text-xs font-mono group-hover:translate-x-1 transition-transform"
-            style="color: var(--brand);"
-          >
-            →
-          </span>
+          <span class="w-6 h-px group-hover:w-10 transition-all duration-300" style="background: var(--brand);" />
+          <span class="tracking-wider">enter the workshop</span>
+          <span class="w-6 h-px group-hover:w-10 transition-all duration-300" style="background: var(--brand);" />
         </.link>
       </div>
     </div>

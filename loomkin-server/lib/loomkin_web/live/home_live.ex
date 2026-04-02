@@ -1,7 +1,7 @@
 defmodule LoomkinWeb.HomeLive do
   @moduledoc """
   Landing page. In local mode, redirects to the project picker.
-  In multi-tenant mode, shows the user's accessible vaults.
+  In multi-tenant mode, shows the Night Loom — owl's perch and vault access.
   """
   use LoomkinWeb, :live_view
 
@@ -31,372 +31,432 @@ defmodule LoomkinWeb.HomeLive do
 
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen" style="background: var(--surface-0);">
-      <div class="home-aurora" aria-hidden="true" />
+    <div class="loom-home min-h-screen relative overflow-hidden" style="background: var(--surface-0);">
+      <%!-- Woven thread background — diagonal lines that drift --%>
+      <div class="loom-threads" aria-hidden="true">
+        <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+          <line
+            x1="0%"
+            y1="20%"
+            x2="100%"
+            y2="35%"
+            stroke="var(--brand)"
+            stroke-width="0.5"
+            opacity="0.06"
+            class="loom-thread-1"
+          />
+          <line
+            x1="0%"
+            y1="45%"
+            x2="100%"
+            y2="25%"
+            stroke="var(--accent-amber)"
+            stroke-width="0.5"
+            opacity="0.05"
+            class="loom-thread-2"
+          />
+          <line
+            x1="0%"
+            y1="65%"
+            x2="100%"
+            y2="80%"
+            stroke="var(--accent-cyan)"
+            stroke-width="0.5"
+            opacity="0.04"
+            class="loom-thread-3"
+          />
+          <line
+            x1="0%"
+            y1="80%"
+            x2="100%"
+            y2="55%"
+            stroke="var(--accent-peach)"
+            stroke-width="0.5"
+            opacity="0.04"
+            class="loom-thread-4"
+          />
+          <line
+            x1="0%"
+            y1="10%"
+            x2="100%"
+            y2="60%"
+            stroke="var(--accent-mauve)"
+            stroke-width="0.3"
+            opacity="0.03"
+            class="loom-thread-5"
+          />
+          <line
+            x1="0%"
+            y1="90%"
+            x2="100%"
+            y2="40%"
+            stroke="var(--accent-emerald)"
+            stroke-width="0.3"
+            opacity="0.03"
+            class="loom-thread-6"
+          />
+        </svg>
+      </div>
 
-      <%!-- Top nav --%>
-      <nav
-        class="sticky top-0 z-30 border-b bg-surface-0/90 backdrop-blur-xl"
-        style="border-color: var(--border-subtle);"
-      >
-        <div class="max-w-5xl mx-auto px-5">
-          <div class="flex items-center justify-between h-12">
-            <.link navigate={~p"/"} class="flex items-center gap-2 group">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 32 32"
-                fill="none"
-                class="opacity-80 group-hover:opacity-100 transition-opacity"
-              >
-                <%!-- Nestled body — plump, rounded, tucked in --%>
-                <path
-                  d="M16 3C9.5 3 5.5 7.5 5.5 13.5c0 3.5 1.5 6.5 3.5 8.5C11 24 13 26 16 26s5-2 7-4c2-2 3.5-5 3.5-8.5C26.5 7.5 22.5 3 16 3z"
-                  fill="var(--surface-2)"
-                  stroke="var(--brand)"
-                  stroke-width="1.2"
-                />
-                <%!-- Ear tufts — small, cozy --%>
-                <path
-                  d="M11 5.5L9.5 2.5M21 5.5l1.5-3"
-                  stroke="var(--brand)"
-                  stroke-width="1.2"
-                  stroke-linecap="round"
-                />
-                <%!-- Tucked wing hints --%>
-                <path
-                  d="M8 16c1.5 2 2.5 4.5 3 7M24 16c-1.5 2-2.5 4.5-3 7"
-                  stroke="var(--brand)"
-                  stroke-width="0.8"
-                  stroke-linecap="round"
-                  opacity="0.35"
-                />
-                <%!-- Chest feather lines — nestled texture --%>
-                <path
-                  d="M13 20c1-.6 2-.9 3-.9s2 .3 3 .9M13.5 22c.8-.4 1.6-.6 2.5-.6s1.7.2 2.5.6"
-                  stroke="var(--brand)"
-                  stroke-width="0.7"
-                  stroke-linecap="round"
-                  opacity="0.25"
-                />
-                <%!-- Left eye --%>
-                <circle
-                  cx="12"
-                  cy="13"
-                  r="3.5"
-                  fill="var(--surface-0)"
-                  stroke="var(--accent-amber)"
-                  stroke-width="0.8"
-                />
-                <circle cx="12.3" cy="12.7" r="1.5" fill="var(--accent-amber)" />
-                <%!-- Right eye --%>
-                <circle
-                  cx="20"
-                  cy="13"
-                  r="3.5"
-                  fill="var(--surface-0)"
-                  stroke="var(--accent-amber)"
-                  stroke-width="0.8"
-                />
-                <circle cx="20.3" cy="12.7" r="1.5" fill="var(--accent-amber)" />
-                <%!-- Beak — small, tucked --%>
-                <path
-                  d="M15 17l1 1.5 1-1.5"
-                  stroke="var(--accent-peach)"
-                  stroke-width="1"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-              <span
-                class="text-sm font-light tracking-wide hidden sm:inline"
-                style="color: var(--text-secondary);"
-              >
-                loom<span class="font-semibold" style="color: var(--brand);">kin</span>
+      <%!-- Top bar — minimal, just auth --%>
+      <nav class="relative z-20 flex items-center justify-between px-6 py-4">
+        <div class="w-20" />
+        <div class="flex items-center gap-3">
+          <%= if @user do %>
+            <span class="text-xs font-mono" style="color: var(--text-muted);">
+              {@user.username || @user.email}
+            </span>
+            <.link
+              navigate={~p"/users/settings"}
+              class="w-7 h-7 rounded-full flex items-center justify-center"
+              style="background: var(--surface-2); border: 1px solid var(--border-subtle);"
+            >
+              <span class="text-[10px] font-bold" style="color: var(--text-muted);">
+                {((@user.username || @user.email || "?") |> String.first() || "?")
+                |> String.upcase()}
               </span>
             </.link>
-
-            <div class="flex items-center gap-3">
-              <%= if @user do %>
-                <.link
-                  navigate={~p"/users/settings"}
-                  class="w-7 h-7 rounded-full flex items-center justify-center transition-all"
-                  style="background: var(--surface-3); border: 1px solid var(--border-subtle);"
-                >
-                  <span class="text-[10px] font-bold" style="color: var(--text-muted);">
-                    {((@user.username || @user.email || "?") |> String.first() || "?")
-                    |> String.upcase()}
-                  </span>
-                </.link>
-              <% else %>
-                <.link
-                  href={~p"/users/log-in"}
-                  class="px-3 py-1 rounded-md text-xs transition-colors"
-                  style="color: var(--text-muted);"
-                >
-                  Log in
-                </.link>
-                <.link
-                  href={~p"/users/register"}
-                  class="px-3 py-1 rounded-md text-xs font-medium text-white transition-colors"
-                  style="background: var(--brand);"
-                >
-                  Sign up
-                </.link>
-              <% end %>
-            </div>
-          </div>
+          <% else %>
+            <.link
+              href={~p"/users/log-in"}
+              class="px-3 py-1.5 rounded text-xs font-mono transition-colors"
+              style="color: var(--text-muted); border: 1px solid var(--border-subtle);"
+            >
+              log in
+            </.link>
+            <.link
+              href={~p"/users/register"}
+              class="px-3 py-1.5 rounded text-xs font-mono transition-colors"
+              style="color: var(--text-brand); border: 1px solid var(--brand); background: var(--brand-subtle);"
+            >
+              sign up
+            </.link>
+          <% end %>
         </div>
       </nav>
 
       <%!-- Main content --%>
-      <div class="relative z-10 max-w-5xl mx-auto px-5">
+      <div class="relative z-10">
         <%= if @user do %>
-          <.vault_dashboard user={@user} vaults={@vaults} />
+          <.the_perch user={@user} vaults={@vaults} />
         <% else %>
-          <.signed_out_hero />
+          <.the_night_loom />
         <% end %>
       </div>
     </div>
     """
   end
 
-  # ── Signed-out hero ──
+  # ═══════════════════════════════════════════════════════════════
+  # THE NIGHT LOOM — signed out hero
+  # ═══════════════════════════════════════════════════════════════
 
-  defp signed_out_hero(assigns) do
+  defp the_night_loom(assigns) do
     ~H"""
-    <div class="pt-32 pb-24">
-      <%!-- Atmospheric glow behind the text --%>
-      <div
-        class="absolute top-20 left-1/2 -translate-x-1/2 w-[600px] h-[300px] rounded-full blur-[120px] opacity-20 pointer-events-none"
-        style="background: radial-gradient(ellipse, var(--accent-mauve), transparent 70%);"
-      />
+    <div class="flex flex-col items-center justify-center min-h-[85vh] px-6">
+      <%!-- The Owl — large, central, the thing you remember --%>
+      <div class="loom-owl mb-8" style="animation: owlAppear 1.2s cubic-bezier(0.16, 1, 0.3, 1) both;">
+        <svg width="120" height="120" viewBox="0 0 64 64" fill="none">
+          <%!-- Ambient glow --%>
+          <circle cx="32" cy="30" r="28" fill="var(--brand)" opacity="0.03" />
 
-      <div class="relative text-center">
-        <p
-          class="text-[11px] font-mono uppercase tracking-[0.3em] mb-8"
-          style="color: var(--text-muted);"
-        >
-          agent orchestration platform
-        </p>
+          <%!-- Body — plump, settled --%>
+          <path
+            d="M32 8C22 8 14 15 14 27c0 7 3 13 7 17 3 3 6 6 11 6s8-3 11-6c4-4 7-10 7-17C50 15 42 8 32 8z"
+            fill="var(--surface-1)"
+            stroke="var(--brand)"
+            stroke-width="1"
+          />
 
-        <%!-- Owl perched above the wordmark --%>
-        <div class="mb-4">
-          <svg
-            width="56"
-            height="56"
-            viewBox="0 0 32 32"
+          <%!-- Ear tufts --%>
+          <path
+            d="M23 12L20 5M41 12l3-7"
+            stroke="var(--brand)"
+            stroke-width="1.2"
+            stroke-linecap="round"
+          />
+
+          <%!-- Wing tuck lines --%>
+          <path
+            d="M18 32c2.5 4 4 9 5 14M46 32c-2.5 4-4 9-5 14"
+            stroke="var(--brand)"
+            stroke-width="0.6"
+            stroke-linecap="round"
+            opacity="0.25"
+          />
+
+          <%!-- Breast feather pattern — the craft detail --%>
+          <path
+            d="M26 40c2-1 4-1.5 6-1.5s4 .5 6 1.5"
+            stroke="var(--accent-amber)"
+            stroke-width="0.6"
+            stroke-linecap="round"
+            opacity="0.2"
+          />
+          <path
+            d="M27 43c1.8-.8 3.2-1.2 5-1.2s3.2.4 5 1.2"
+            stroke="var(--accent-peach)"
+            stroke-width="0.5"
+            stroke-linecap="round"
+            opacity="0.15"
+          />
+          <path
+            d="M28.5 46c1.2-.5 2.3-.7 3.5-.7s2.3.2 3.5.7"
+            stroke="var(--brand)"
+            stroke-width="0.5"
+            stroke-linecap="round"
+            opacity="0.12"
+          />
+
+          <%!-- Left eye --%>
+          <circle
+            cx="25"
+            cy="26"
+            r="6"
+            fill="var(--surface-0)"
+            stroke="var(--accent-amber)"
+            stroke-width="0.8"
+          />
+          <circle
+            cx="25"
+            cy="26"
+            r="4"
             fill="none"
-            class="mx-auto drop-shadow-[0_0_24px_rgba(180,160,232,0.2)]"
-          >
-            <%!-- Nestled body --%>
-            <path
-              d="M16 3C9.5 3 5.5 7.5 5.5 13.5c0 3.5 1.5 6.5 3.5 8.5C11 24 13 26 16 26s5-2 7-4c2-2 3.5-5 3.5-8.5C26.5 7.5 22.5 3 16 3z"
-              fill="var(--surface-1)"
-              stroke="var(--brand)"
-              stroke-width="1"
-            />
-            <%!-- Ear tufts --%>
-            <path
-              d="M11 5.5L9.5 2.5M21 5.5l1.5-3"
-              stroke="var(--brand)"
-              stroke-width="1.2"
-              stroke-linecap="round"
-            />
-            <%!-- Wings --%>
-            <path
-              d="M8 16c1.5 2 2.5 4.5 3 7M24 16c-1.5 2-2.5 4.5-3 7"
-              stroke="var(--brand)"
-              stroke-width="0.8"
-              stroke-linecap="round"
-              opacity="0.3"
-            />
-            <%!-- Chest feathers --%>
-            <path
-              d="M13 20c1-.6 2-.9 3-.9s2 .3 3 .9M13.5 22c.8-.4 1.6-.6 2.5-.6s1.7.2 2.5.6"
-              stroke="var(--brand)"
-              stroke-width="0.7"
-              stroke-linecap="round"
-              opacity="0.2"
-            />
-            <%!-- Eyes --%>
-            <circle
-              cx="12"
-              cy="13"
-              r="3.5"
-              fill="var(--surface-0)"
-              stroke="var(--accent-amber)"
-              stroke-width="0.8"
-            />
-            <circle cx="12.3" cy="12.7" r="1.5" fill="var(--accent-amber)" />
-            <circle
-              cx="20"
-              cy="13"
-              r="3.5"
-              fill="var(--surface-0)"
-              stroke="var(--accent-amber)"
-              stroke-width="0.8"
-            />
-            <circle cx="20.3" cy="12.7" r="1.5" fill="var(--accent-amber)" />
-            <%!-- Beak --%>
-            <path
-              d="M15 17l1 1.5 1-1.5"
-              stroke="var(--accent-peach)"
-              stroke-width="1"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </div>
+            stroke="var(--accent-amber)"
+            stroke-width="0.3"
+            opacity="0.4"
+          />
+          <circle cx="25.5" cy="25.5" r="2.5" fill="var(--accent-amber)" />
+          <circle cx="24.2" cy="24.5" r="0.8" fill="var(--surface-0)" opacity="0.7" />
 
+          <%!-- Right eye --%>
+          <circle
+            cx="39"
+            cy="26"
+            r="6"
+            fill="var(--surface-0)"
+            stroke="var(--accent-amber)"
+            stroke-width="0.8"
+          />
+          <circle
+            cx="39"
+            cy="26"
+            r="4"
+            fill="none"
+            stroke="var(--accent-amber)"
+            stroke-width="0.3"
+            opacity="0.4"
+          />
+          <circle cx="39.5" cy="25.5" r="2.5" fill="var(--accent-amber)" />
+          <circle cx="38.2" cy="24.5" r="0.8" fill="var(--surface-0)" opacity="0.7" />
+
+          <%!-- Facial disc — the feather ring around eyes --%>
+          <path
+            d="M19 22c0-4 5-8 13-8s13 4 13 8"
+            stroke="var(--brand)"
+            stroke-width="0.5"
+            stroke-linecap="round"
+            opacity="0.2"
+            fill="none"
+          />
+
+          <%!-- Beak --%>
+          <path
+            d="M30 33l2 3 2-3"
+            stroke="var(--accent-peach)"
+            stroke-width="1.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+
+          <%!-- Perch branch --%>
+          <path
+            d="M8 52 C16 50, 28 53, 32 51 S44 49, 56 52"
+            stroke="var(--accent-amber)"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            opacity="0.4"
+          />
+          <path
+            d="M12 54 C22 51, 38 55, 52 52"
+            stroke="var(--accent-peach)"
+            stroke-width="0.8"
+            stroke-linecap="round"
+            opacity="0.2"
+          />
+          <%!-- Small twigs off the branch --%>
+          <path
+            d="M20 52 L17 49"
+            stroke="var(--accent-amber)"
+            stroke-width="0.7"
+            stroke-linecap="round"
+            opacity="0.3"
+          />
+          <path
+            d="M44 51 L47 48"
+            stroke="var(--accent-amber)"
+            stroke-width="0.7"
+            stroke-linecap="round"
+            opacity="0.3"
+          />
+          <path
+            d="M36 53 L38 50"
+            stroke="var(--accent-peach)"
+            stroke-width="0.5"
+            stroke-linecap="round"
+            opacity="0.2"
+          />
+        </svg>
+      </div>
+
+      <%!-- The Name — not a heading, an identity --%>
+      <div class="text-center" style="animation: fadeUp 0.8s 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;">
         <h1
-          class="text-5xl md:text-6xl font-light tracking-tight mb-0"
+          class="text-6xl md:text-8xl font-extralight tracking-[-0.04em] leading-none"
           style="color: var(--text-primary);"
         >
-          loom<span class="font-semibold" style="color: var(--brand);">kin</span>
+          l<span class="font-light" style="color: var(--text-secondary);">oo</span>m<span
+            class="font-semibold"
+            style="color: var(--brand);"
+          >kin</span>
         </h1>
+      </div>
 
-        <%!-- Nest — woven branches under the wordmark --%>
-        <div class="flex justify-center -mt-1 mb-6">
-          <svg width="180" height="20" viewBox="0 0 180 20" fill="none" class="opacity-60">
-            <%!-- Layered organic branch strokes --%>
-            <path
-              d="M20 12 C40 8, 60 14, 90 10 S140 6, 160 11"
-              stroke="var(--accent-amber)"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              opacity="0.5"
-            />
-            <path
-              d="M15 14 C45 10, 70 16, 95 12 S135 8, 165 13"
-              stroke="var(--brand)"
-              stroke-width="1"
-              stroke-linecap="round"
-              opacity="0.35"
-            />
-            <path
-              d="M25 10 C50 15, 80 9, 100 13 S140 11, 155 9"
-              stroke="var(--accent-peach)"
-              stroke-width="1.2"
-              stroke-linecap="round"
-              opacity="0.3"
-            />
-            <%!-- A few small twig accents --%>
-            <path
-              d="M55 11 L52 8"
-              stroke="var(--accent-amber)"
-              stroke-width="0.8"
-              stroke-linecap="round"
-              opacity="0.4"
-            />
-            <path
-              d="M120 10 L123 7"
-              stroke="var(--accent-amber)"
-              stroke-width="0.8"
-              stroke-linecap="round"
-              opacity="0.4"
-            />
-            <path
-              d="M85 13 L82 10"
-              stroke="var(--accent-peach)"
-              stroke-width="0.7"
-              stroke-linecap="round"
-              opacity="0.3"
-            />
-          </svg>
-        </div>
-
-        <p
-          class="text-sm max-w-sm mx-auto leading-relaxed"
-          style="color: var(--text-secondary);"
-        >
-          AI agent teams that work alongside yours. <br />
-          <span style="color: var(--text-muted);">Orchestrate, delegate, and build — together.</span>
+      <%!-- The Thread — a single line of purpose --%>
+      <div
+        class="mt-10 text-center"
+        style="animation: fadeUp 0.8s 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;"
+      >
+        <p class="font-mono text-xs tracking-[0.15em] uppercase" style="color: var(--text-muted);">
+          weaving agent teams since the small hours
         </p>
       </div>
 
-      <%!-- Capability hints — quiet, not CTAs --%>
-      <div class="flex items-center justify-center gap-8 mt-16">
-        <div
-          :for={
-            {label, icon_path} <- [
-              {"Knowledge Vaults",
-               "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"},
-              {"Agent Teams",
-               "M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"},
-              {"Decision Graphs",
-               "M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"}
-            ]
-          }
-          class="flex items-center gap-2"
+      <%!-- Three threads — what loomkin does, as woven strands --%>
+      <div
+        class="mt-16 flex flex-col sm:flex-row items-center gap-0"
+        style="animation: fadeUp 0.8s 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;"
+      >
+        <.thread_strand color="var(--accent-amber)" label="orchestrate" />
+        <span class="font-mono text-[10px] px-3 py-2" style="color: var(--text-muted);">~</span>
+        <.thread_strand color="var(--accent-cyan)" label="delegate" />
+        <span class="font-mono text-[10px] px-3 py-2" style="color: var(--text-muted);">~</span>
+        <.thread_strand color="var(--accent-emerald)" label="build" />
+      </div>
+
+      <%!-- Bottom whisper --%>
+      <div
+        class="mt-20 mb-8"
+        style="animation: fadeUp 0.8s 1.2s cubic-bezier(0.16, 1, 0.3, 1) both;"
+      >
+        <.link
+          href={~p"/users/register"}
+          class="group inline-flex items-center gap-3 px-6 py-3 rounded-full transition-all"
+          style="border: 1px solid var(--border-subtle); background: var(--surface-1);"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="w-3.5 h-3.5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
-            style="color: var(--text-muted);"
+          <span class="text-sm" style="color: var(--text-secondary);">
+            enter the workshop
+          </span>
+          <span
+            class="text-xs font-mono group-hover:translate-x-1 transition-transform"
+            style="color: var(--brand);"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" d={icon_path} />
-          </svg>
-          <span class="text-xs" style="color: var(--text-muted);">{label}</span>
-        </div>
+            →
+          </span>
+        </.link>
       </div>
     </div>
     """
   end
 
-  # ── Vault dashboard (signed in) ──
+  attr :color, :string, required: true
+  attr :label, :string, required: true
+
+  defp thread_strand(assigns) do
+    ~H"""
+    <div class="flex items-center gap-2 px-3 py-2">
+      <div class="w-8 h-px" style={"background: #{@color}; opacity: 0.5;"} />
+      <span class="font-mono text-[11px] tracking-wider" style={"color: #{@color};"}>{@label}</span>
+      <div class="w-8 h-px" style={"background: #{@color}; opacity: 0.5;"} />
+    </div>
+    """
+  end
+
+  # ═══════════════════════════════════════════════════════════════
+  # THE PERCH — signed in dashboard
+  # ═══════════════════════════════════════════════════════════════
 
   attr :user, :any, required: true
   attr :vaults, :list, required: true
 
-  defp vault_dashboard(assigns) do
+  defp the_perch(assigns) do
     ~H"""
-    <div class="pt-12 pb-20">
-      <div class="flex items-center justify-between mb-8">
-        <div>
-          <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">
-            Your Vaults
-          </h1>
-          <p class="text-sm" style="color: var(--text-muted);">
-            Knowledge bases managed by your teams
-          </p>
+    <div class="max-w-4xl mx-auto px-6 pt-8 pb-20">
+      <%!-- Greeting — warm, personal --%>
+      <div class="mb-12" style="animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;">
+        <div class="flex items-center gap-3 mb-2">
+          <div
+            class="w-2 h-2 rounded-full"
+            style="background: var(--accent-emerald); box-shadow: 0 0 8px var(--accent-emerald);"
+          />
+          <span class="text-xs font-mono" style="color: var(--text-muted);">
+            {greeting_time()}
+          </span>
         </div>
+        <h1 class="text-2xl font-light" style="color: var(--text-primary);">
+          Your vaults
+        </h1>
       </div>
 
+      <%!-- Vault cards --%>
       <%= if @vaults == [] do %>
         <div
-          class="rounded-xl p-12 text-center border"
-          style="background: var(--surface-1); border-color: var(--border-subtle);"
+          class="rounded-xl p-16 text-center"
+          style="background: var(--surface-1); border: 1px dashed var(--border-default); animation: fadeUp 0.6s 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="w-10 h-10 mx-auto mb-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1"
-            style="color: var(--text-muted);"
-          >
+          <%!-- Small sleeping owl --%>
+          <svg width="40" height="40" viewBox="0 0 32 32" fill="none" class="mx-auto mb-4 opacity-40">
             <path
+              d="M16 6C11 6 8 10 8 15c0 3 1 6 3 8 1.5 1.5 3 3 5 3s3.5-1.5 5-3c2-2 3-5 3-8 0-5-3-9-8-9z"
+              fill="var(--surface-2)"
+              stroke="var(--brand)"
+              stroke-width="0.8"
+            />
+            <%!-- Closed eyes — sleeping --%>
+            <path
+              d="M11 14.5c1-0.5 2-0.5 3 0"
+              stroke="var(--accent-amber)"
+              stroke-width="0.8"
+              stroke-linecap="round"
+            />
+            <path
+              d="M18 14.5c1-0.5 2-0.5 3 0"
+              stroke="var(--accent-amber)"
+              stroke-width="0.8"
+              stroke-linecap="round"
+            />
+            <path
+              d="M15 17l1 1 1-1"
+              stroke="var(--accent-peach)"
+              stroke-width="0.8"
               stroke-linecap="round"
               stroke-linejoin="round"
-              d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
             />
           </svg>
           <p class="text-sm mb-1" style="color: var(--text-secondary);">
-            No vaults available yet
+            No vaults yet
           </p>
-          <p class="text-xs" style="color: var(--text-muted);">
-            Vaults will appear here once your organization sets one up.
+          <p class="text-xs font-mono" style="color: var(--text-muted);">
+            the owl rests until the first vault is woven
           </p>
         </div>
       <% else %>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <.vault_card :for={vault <- @vaults} vault={vault} />
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <.vault_card
+            :for={{vault, idx} <- Enum.with_index(@vaults)}
+            vault={vault}
+            idx={idx}
+          />
         </div>
       <% end %>
     </div>
@@ -404,76 +464,100 @@ defmodule LoomkinWeb.HomeLive do
   end
 
   attr :vault, :map, required: true
+  attr :idx, :integer, required: true
 
   defp vault_card(assigns) do
     ~H"""
     <.link
       navigate={~p"/vault/#{@vault.vault_id}"}
-      class="group block rounded-xl p-5 border transition-all"
-      style="background: var(--surface-1); border-color: var(--border-subtle);"
+      class="group relative block rounded-xl p-6 transition-all hover:translate-y-[-2px]"
+      style={"background: var(--surface-1); border: 1px solid var(--border-subtle); animation: fadeUp 0.5s #{@idx * 0.1 + 0.15}s cubic-bezier(0.16, 1, 0.3, 1) both;"}
     >
-      <div class="flex items-start gap-3 mb-3">
-        <div
-          class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-          style="background: var(--brand-subtle);"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="w-4.5 h-4.5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
-            style="color: var(--brand);"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-            />
-          </svg>
-        </div>
-        <div class="min-w-0">
+      <%!-- Hover glow --%>
+      <div
+        class="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+        style="box-shadow: var(--glow-brand);"
+      />
+
+      <div class="relative flex items-start justify-between">
+        <div class="min-w-0 flex-1">
+          <%!-- Thread accent line --%>
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-6 h-px" style="background: var(--brand); opacity: 0.4;" />
+            <span
+              class="text-[10px] font-mono uppercase tracking-widest"
+              style="color: var(--text-muted);"
+            >
+              vault
+            </span>
+          </div>
+
           <h3
-            class="text-sm font-medium truncate group-hover:text-[var(--brand)]"
-            style="color: var(--text-primary); transition: color var(--transition-fast);"
+            class="text-lg font-medium mb-1 group-hover:text-[var(--brand)] transition-colors"
+            style="color: var(--text-primary);"
           >
             {@vault.name}
           </h3>
+
           <p
             :if={@vault.description}
-            class="text-xs mt-0.5 line-clamp-2"
+            class="text-xs leading-relaxed line-clamp-2 mb-4"
             style="color: var(--text-muted);"
           >
             {@vault.description}
           </p>
-        </div>
-      </div>
 
-      <div class="flex items-center gap-3">
-        <span
-          class="text-xs px-2 py-0.5 rounded"
-          style="background: var(--surface-2); color: var(--text-muted);"
+          <div class="flex items-center gap-2">
+            <span
+              class="text-[10px] font-mono px-2 py-0.5 rounded"
+              style="background: var(--surface-2); color: var(--text-muted);"
+            >
+              {@vault.storage_type}
+            </span>
+          </div>
+        </div>
+
+        <%!-- Arrow — appears on hover --%>
+        <div
+          class="opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-1 mt-1"
+          style="color: var(--brand);"
         >
-          {@vault.storage_type}
-        </span>
-        <span
-          class="text-xs ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
-          style="color: var(--text-brand);"
-        >
-          Open →
-        </span>
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75"
+            />
+          </svg>
+        </div>
       </div>
     </.link>
     """
   end
 
-  # ── Data loading ──
+  # ── Helpers ──
+
+  defp greeting_time do
+    hour = DateTime.utc_now().hour
+
+    cond do
+      hour < 6 -> "the owl is awake"
+      hour < 12 -> "good morning"
+      hour < 18 -> "good afternoon"
+      true -> "good evening"
+    end
+  end
 
   defp load_user_vaults(user) do
     import Ecto.Query
 
-    # Get all orgs the user belongs to
     org_ids =
       Loomkin.Repo.all(
         from(m in Loomkin.Schemas.OrganizationMembership,
@@ -482,7 +566,6 @@ defmodule LoomkinWeb.HomeLive do
         )
       )
 
-    # Get vaults for those orgs + unscoped vaults
     Loomkin.Repo.all(
       from(vc in Loomkin.Schemas.VaultConfig,
         where: vc.organization_id in ^org_ids or is_nil(vc.organization_id),

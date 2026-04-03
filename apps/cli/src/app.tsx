@@ -11,6 +11,7 @@ import { ApprovalGatePrompt } from "./components/ApprovalGatePrompt.js";
 import { PlanApprovalPrompt } from "./components/PlanApprovalPrompt.js";
 import { InputArea } from "./components/InputArea.js";
 import { ProcessingStatus } from "./components/ProcessingStatus.js";
+import { ConnectionSkeleton } from "./components/skeleton/ConnectionSkeleton.js";
 import { useConnection } from "./hooks/useConnection.js";
 import { useChannelLifecycle } from "./hooks/useChannelLifecycle.js";
 import { useSessionChannel } from "./hooks/useSessionChannel.js";
@@ -231,7 +232,9 @@ export function App() {
 
   return (
     <Box flexDirection="column" height={termHeight} width={termWidth}>
-      {splitMode ? (
+      {appState.connectionState === "connecting" ? (
+        <ConnectionSkeleton width={termWidth} height={termHeight - 6} />
+      ) : splitMode ? (
         <SplitPaneLayout
           messages={messages}
           pendingToolCalls={pendingToolCalls}

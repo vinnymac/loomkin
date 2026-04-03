@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { MarkdownText } from "./MarkdownText.js";
 import { ToolCallDisplay } from "./ToolCallDisplay.js";
+import { MessageSkeleton } from "./skeleton/MessageSkeleton.js";
 import type { Message as MessageType, ToolCall } from "../lib/types.js";
 
 interface Props {
@@ -88,11 +89,7 @@ export function Message({
               content={isStreaming ? `${content}\u2588` : content}
             />
           ) : (
-            isStreaming && (
-              <Text color="yellow" dimColor>
-                {"\u2588"}
-              </Text>
-            )
+            isStreaming && <MessageSkeleton maxWidth={60} />
           )}
           {tool_calls?.map((tc) => (
             <ToolCallDisplay

@@ -580,6 +580,7 @@ async function main() {
     },
   );
   await waitUntilExit();
+  process.exit(0);
 }
 
 main().catch((err) => {

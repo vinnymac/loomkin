@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import Spinner from "ink-spinner";
+import { ToolCallSkeleton } from "./skeleton/ToolCallSkeleton.js";
 import type { ToolCall } from "../lib/types.js";
 
 interface Props {
@@ -24,6 +25,7 @@ export function ToolCallDisplay({ toolCall, isPending }: Props) {
         </Text>
         <Text dimColor>{argsPreview}</Text>
       </Box>
+      {isPending && <ToolCallSkeleton width={30} />}
       {toolCall.output && (
         <Box marginLeft={2}>
           <Text dimColor wrap="truncate-end">

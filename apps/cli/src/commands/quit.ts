@@ -1,8 +1,8 @@
 import { register, type CommandContext } from "./registry.js";
 
 register({
-  name: "quit",
-  aliases: ["q", "exit"],
+  name: "exit",
+  aliases: ["quit", "q"],
   description: "Exit the TUI",
   handler: (_args: string, ctx: CommandContext) => {
     ctx.exit();

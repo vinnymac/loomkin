@@ -42,9 +42,9 @@ defmodule Loomkin.Tools.VaultWriteTest do
     assert entry.title == "New Note"
   end
 
-  test "returns error for missing vault" do
+  test "writes to any vault_id without requiring config" do
     params = %{vault_id: "nonexistent", path: "x.md", content: "# Hello"}
-    assert {:error, msg} = VaultWrite.run(params, %{})
-    assert msg =~ "vault_not_found"
+    assert {:ok, %{result: result}} = VaultWrite.run(params, %{})
+    assert result =~ "Written: x.md"
   end
 end

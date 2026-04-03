@@ -7,32 +7,19 @@ defmodule Loomkin.VaultTest do
   @vault_id "context-test-vault"
 
   setup do
-    tmp_root =
-      Path.join(
-        System.tmp_dir!(),
-        "loomkin_vault_ctx_test_#{System.unique_integer([:positive])}"
-      )
-
-    File.mkdir_p!(tmp_root)
-
-    on_exit(fn -> File.rm_rf!(tmp_root) end)
-
     {:ok, config} =
       Vault.create_vault(%{
         vault_id: @vault_id,
-        name: "Test Vault",
-        storage_type: "local",
-        storage_config: %{"root" => tmp_root}
+        name: "Test Vault"
       })
 
-    %{config: config, root: tmp_root}
+    %{config: config}
   end
 
   describe "create_vault/1 and get_config/1" do
     test "creates and retrieves a vault config" do
       assert {:ok, config} = Vault.get_config(@vault_id)
       assert config.name == "Test Vault"
-      assert config.storage_type == "local"
     end
 
     test "returns error for unknown vault" do
@@ -41,7 +28,7 @@ defmodule Loomkin.VaultTest do
   end
 
   describe "write/3 and read/2" do
-    test "round-trips raw markdown content", %{root: _root} do
+    test "round-trips raw markdown content" do
       content = """
       ---
       title: Round Trip
@@ -62,7 +49,7 @@ defmodule Loomkin.VaultTest do
       assert read_entry.body =~ "This is a test note."
     end
 
-    test "writes an Entry struct", %{root: _root} do
+    test "writes an Entry struct" do
       entry = %Entry{
         title: "Struct Entry",
         entry_type: "decision",
@@ -82,7 +69,7 @@ defmodule Loomkin.VaultTest do
   end
 
   describe "write_entry/2" do
-    test "writes using the entry's path field", %{root: _root} do
+    test "writes using the entry's path field" do
       entry = %Entry{
         path: "meetings/standup.md",
         title: "Standup",
@@ -101,7 +88,7 @@ defmodule Loomkin.VaultTest do
   end
 
   describe "delete/2" do
-    test "removes entry from storage and index", %{root: root} do
+    test "removes entry from index" do
       Vault.write(@vault_id, "to-delete.md", "---\ntitle: Delete Me\n---\nBody")
 
       assert {:ok, _} = Vault.read(@vault_id, "to-delete.md")
@@ -109,12 +96,11 @@ defmodule Loomkin.VaultTest do
       assert :ok = Vault.delete(@vault_id, "to-delete.md")
 
       assert {:error, :not_found} = Vault.read(@vault_id, "to-delete.md")
-      refute File.exists?(Path.join(root, "to-delete.md"))
     end
   end
 
   describe "search/3" do
-    test "finds entries by full-text search", %{root: _root} do
+    test "finds entries by full-text search" do
       Vault.write(@vault_id, "notes/elixir.md", """
       ---
       title: Elixir Guide
@@ -139,7 +125,7 @@ defmodule Loomkin.VaultTest do
   end
 
   describe "list/2" do
-    test "lists all vault entries", %{root: _root} do
+    test "lists all vault entries" do
       Vault.write(@vault_id, "a.md", "---\ntitle: A\n---\nA")
       Vault.write(@vault_id, "b.md", "---\ntitle: B\n---\nB")
 
@@ -147,7 +133,7 @@ defmodule Loomkin.VaultTest do
       assert length(results) == 2
     end
 
-    test "filters by entry_type", %{root: _root} do
+    test "filters by entry_type" do
       Vault.write(@vault_id, "note.md", "---\ntitle: Note\ntype: note\n---\nContent")
       Vault.write(@vault_id, "meeting.md", "---\ntitle: Meeting\ntype: meeting\n---\nContent")
 
@@ -158,7 +144,7 @@ defmodule Loomkin.VaultTest do
   end
 
   describe "stats/1" do
-    test "returns entry counts by type", %{root: _root} do
+    test "returns entry counts by type" do
       Vault.write(@vault_id, "n1.md", "---\ntitle: N1\ntype: note\n---\nContent")
       Vault.write(@vault_id, "n2.md", "---\ntitle: N2\ntype: note\n---\nContent")
       Vault.write(@vault_id, "m1.md", "---\ntitle: M1\ntype: meeting\n---\nContent")
@@ -167,32 +153,6 @@ defmodule Loomkin.VaultTest do
       assert stats.total_entries == 3
       assert stats.by_type["note"] == 2
       assert stats.by_type["meeting"] == 1
-    end
-  end
-
-  describe "sync/1" do
-    test "syncs files from storage to index", %{root: root} do
-      # Write file directly to storage (bypassing context)
-      path = Path.join(root, "direct.md")
-      File.write!(path, "---\ntitle: Direct\n---\nWritten directly.")
-
-      assert {:ok, result} = Vault.sync(@vault_id)
-      assert result.synced >= 1
-
-      assert {:ok, entry} = Vault.read(@vault_id, "direct.md")
-      assert entry.title == "Direct"
-    end
-  end
-
-  describe "check_sync/1" do
-    test "reports sync status", %{root: root} do
-      Vault.write(@vault_id, "synced.md", "---\ntitle: Synced\n---\nBody")
-
-      # Write a file directly — should show as storage_only
-      File.write!(Path.join(root, "unsynced.md"), "---\ntitle: Unsynced\n---\nBody")
-
-      assert {:ok, status} = Vault.check_sync(@vault_id)
-      assert "unsynced.md" in status.storage_only
     end
   end
 end

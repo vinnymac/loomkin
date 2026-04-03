@@ -7,7 +7,7 @@ defmodule LoomkinWeb.UserRegistrationControllerTest do
     test "renders registration page", %{conn: conn} do
       conn = get(conn, ~p"/users/register")
       response = html_response(conn, 200)
-      assert response =~ "Create your workspace"
+      assert response =~ "new account"
       assert response =~ ~p"/users/register"
     end
 
@@ -42,7 +42,7 @@ defmodule LoomkinWeb.UserRegistrationControllerTest do
         })
 
       response = html_response(conn, 200)
-      assert response =~ "Create your workspace"
+      assert response =~ "new account"
       # Form re-renders with the invalid value preserved
       assert response =~ "with spaces"
     end

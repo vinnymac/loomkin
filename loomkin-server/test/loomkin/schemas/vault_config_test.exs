@@ -7,8 +7,6 @@ defmodule Loomkin.Schemas.VaultConfigTest do
     vault_id: "my-vault",
     name: "My Vault",
     description: "A test vault",
-    storage_type: "local",
-    storage_config: %{"path" => "/tmp/vault"},
     metadata: %{"version" => 1}
   }
 
@@ -47,7 +45,6 @@ defmodule Loomkin.Schemas.VaultConfigTest do
       assert config.id
       assert config.vault_id == "my-vault"
       assert config.name == "My Vault"
-      assert config.storage_type == "local"
       assert config.inserted_at
     end
 
@@ -63,17 +60,6 @@ defmodule Loomkin.Schemas.VaultConfigTest do
         |> Repo.insert()
 
       assert %{vault_id: ["has already been taken"]} = errors_on(changeset)
-    end
-
-    test "defaults storage_type to local" do
-      attrs = %{vault_id: "v2", name: "Another"}
-
-      {:ok, config} =
-        %VaultConfig{}
-        |> VaultConfig.changeset(attrs)
-        |> Repo.insert()
-
-      assert config.storage_type == "local"
     end
 
     test "defaults metadata to empty map" do

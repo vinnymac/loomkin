@@ -25,9 +25,10 @@ import { loadHistory, saveHistory, appendHistory } from "../lib/history.js";
 interface Props {
   onSubmit: (text: string, targetAgent?: string) => void;
   commandContext: CommandContext;
+  termWidth?: number;
 }
 
-export function InputArea({ onSubmit, commandContext }: Props) {
+export function InputArea({ onSubmit, commandContext, termWidth = 80 }: Props) {
   const [value, setValue] = useState("");
   const [history, setHistory] = useState<string[]>(() => loadHistory());
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -532,6 +533,14 @@ export function InputArea({ onSubmit, commandContext }: Props) {
       ? "Press i to type, : for commands, Enter to send..."
       : "Send a message, @agent to target, or / for commands...";
 
+  // border (2) + paddingX={1} (2) + prompt char + space (2) = 6 fixed overhead
+  const targetOverhead = focusedTarget && !isNormal ? focusedTarget.length + 2 : 0;
+  const availableWidth = Math.max(0, termWidth - 6 - targetOverhead - modeHint.length);
+  const truncatedPlaceholder =
+    placeholder.length > availableWidth
+      ? placeholder.slice(0, Math.max(0, availableWidth - 1)) + "…"
+      : placeholder;
+
   const wasAuto = modelPickerAutoRef.current;
 
   return (
@@ -610,7 +619,7 @@ export function InputArea({ onSubmit, commandContext }: Props) {
                       {value.slice(cursor + 1)}
                     </>
                   ) : (
-                    <Text dimColor>{placeholder}</Text>
+                    <Text dimColor>{truncatedPlaceholder}</Text>
                   )}
                 </Text>
               </Box>
@@ -625,7 +634,7 @@ export function InputArea({ onSubmit, commandContext }: Props) {
                   setArgPaletteIndex(0);
                 }}
                 onSubmit={handleSubmit}
-                placeholder={placeholder}
+                placeholder={truncatedPlaceholder}
                 focus={!hasError}
               />
             )}

@@ -195,7 +195,7 @@ defmodule Loomkin.Tools.TeamSpawn do
         )
 
       case Manager.find_agent(team_id, spawned_name) do
-        {:ok, pid} -> Agent.peer_message(pid, "system", personal_manifest)
+        {:ok, pid} -> Agent.add_briefing(pid, personal_manifest)
         _ -> :ok
       end
     end)

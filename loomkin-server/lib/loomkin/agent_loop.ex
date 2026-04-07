@@ -260,11 +260,7 @@ defmodule Loomkin.AgentLoop do
     })
 
     # Build assistant message with tool calls
-    assistant_msg = %{
-      role: :assistant,
-      content: classified.text,
-      tool_calls: classified.tool_calls
-    }
+    assistant_msg = assistant_message_from_response(classified, response)
 
     messages = messages ++ [assistant_msg]
     emit(config, :new_message, assistant_msg)
@@ -320,7 +316,7 @@ defmodule Loomkin.AgentLoop do
        ) do
     response_text = classified.text
 
-    assistant_msg = %{role: :assistant, content: response_text}
+    assistant_msg = assistant_message_from_response(classified, response)
     messages = messages ++ [assistant_msg]
     emit(config, :new_message, assistant_msg)
 
@@ -881,34 +877,67 @@ defmodule Loomkin.AgentLoop do
   end
 
   defp build_req_messages(windowed_messages) do
-    Enum.map(windowed_messages, fn msg ->
-      case msg.role do
-        :system ->
-          ReqLLM.Context.system(msg.content)
+    Enum.map(windowed_messages, &to_req_message/1)
+  end
 
-        :user ->
-          ReqLLM.Context.user(msg.content)
+  @doc false
+  def assistant_message_from_response(classified, response) when is_map(classified) do
+    base = %{
+      role: :assistant,
+      content: classified[:text] || classified["text"] || ""
+    }
 
-        :assistant ->
-          if msg[:tool_calls] && msg[:tool_calls] != [] do
-            tool_calls =
-              Enum.map(msg.tool_calls, fn tc ->
-                {tc[:name] || tc["name"], tc[:arguments] || tc["arguments"] || %{},
-                 id: tc[:id] || tc["id"]}
-              end)
+    base =
+      case classified[:tool_calls] || classified["tool_calls"] do
+        tool_calls when is_list(tool_calls) and tool_calls != [] ->
+          Map.put(base, :tool_calls, tool_calls)
 
-            ReqLLM.Context.assistant(msg.content || "", tool_calls: tool_calls)
-          else
-            ReqLLM.Context.assistant(msg.content || "")
-          end
-
-        :tool ->
-          ReqLLM.Context.tool_result(
-            msg[:tool_call_id] || "",
-            msg.content || ""
-          )
+        _ ->
+          base
       end
-    end)
+
+    case response do
+      %{message: %{metadata: metadata}} when is_map(metadata) and map_size(metadata) > 0 ->
+        Map.put(base, :metadata, metadata)
+
+      _ ->
+        base
+    end
+  end
+
+  @doc false
+  def to_req_message(msg) do
+    role = msg[:role] || msg["role"]
+    content = msg[:content] || msg["content"] || ""
+    metadata = msg[:metadata] || msg["metadata"] || %{}
+    tool_calls = msg[:tool_calls] || msg["tool_calls"]
+
+    case role do
+      :system ->
+        ReqLLM.Context.system(content)
+
+      :user ->
+        ReqLLM.Context.user(content)
+
+      :assistant ->
+        if is_list(tool_calls) and tool_calls != [] do
+          tool_calls =
+            Enum.map(tool_calls, fn tc ->
+              {tc[:name] || tc["name"], tc[:arguments] || tc["arguments"] || %{},
+               id: tc[:id] || tc["id"]}
+            end)
+
+          ReqLLM.Context.assistant(content, tool_calls: tool_calls, metadata: metadata)
+        else
+          ReqLLM.Context.assistant(content, metadata: metadata)
+        end
+
+      :tool ->
+        ReqLLM.Context.tool_result(
+          msg[:tool_call_id] || msg["tool_call_id"] || "",
+          content
+        )
+    end
   end
 
   defp emit(config, event_name, payload) do

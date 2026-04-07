@@ -590,10 +590,12 @@ defmodule LoomkinWeb.SessionChannel do
   # --- Collaboration signals ---
 
   def handle_info(%Jido.Signal{type: "collaboration.peer.message"} = sig, socket) do
+    {from, content} = serialize_peer_message(sig.data)
+
     push(socket, "peer_message", %{
-      from: sig.data[:from] || sig.data[:agent_name],
-      to: sig.data[:to],
-      content: sig.data[:content],
+      from: from,
+      to: sig.data[:target] || sig.data[:to],
+      content: content,
       team_id: sig.data[:team_id]
     })
 
@@ -919,10 +921,28 @@ defmodule LoomkinWeb.SessionChannel do
           "The user manually spawned agent \"#{agent_name}\" (role: #{role}) via the CLI. " <>
             "This agent is now available in your team. You may delegate #{role}-related tasks to it."
 
-        Loomkin.Teams.Agent.peer_message(pid, "system", message)
+        Loomkin.Teams.Agent.add_briefing(pid, message)
 
       [] ->
         :ok
+    end
+  end
+
+  defp serialize_peer_message(data) do
+    fallback_from = data[:from] || data[:agent_name]
+
+    case data[:message] do
+      {:peer_message, sender, text} when is_binary(text) ->
+        {sender || fallback_from, text}
+
+      text when is_binary(text) ->
+        {fallback_from, text}
+
+      nil ->
+        {fallback_from, data[:content]}
+
+      other ->
+        {fallback_from, inspect(other)}
     end
   end
 

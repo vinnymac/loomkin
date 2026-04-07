@@ -63,6 +63,9 @@ defmodule Loomkin.Teams.Agent do
     spawned_child_teams: [],
     auto_approve_spawns: false,
     wake_ref: nil,
+    wake_context: nil,
+    loop_context: nil,
+    last_loop_fingerprint: nil,
     scope_tier: nil,
     files_touched: MapSet.new(),
     task_cost_usd: 0.0
@@ -103,6 +106,11 @@ defmodule Loomkin.Teams.Agent do
   @doc "Send a peer message to this agent."
   def peer_message(pid, from, content) do
     GenServer.cast(pid, {:peer_message, from, content})
+  end
+
+  @doc "Append a system briefing without waking an idle agent."
+  def add_briefing(pid, text) when is_pid(pid) and is_binary(text) do
+    GenServer.cast(pid, {:add_briefing, text})
   end
 
   @doc "Get current agent status."
@@ -355,18 +363,9 @@ defmodule Loomkin.Teams.Agent do
 
     user_message = %{role: :user, content: text}
     messages = state.messages ++ [user_message]
+    trigger = build_trigger_context(:user_message, %{preview: text, from: "user"}, state)
 
-    loop_opts = build_loop_opts(state)
-    snapshot = build_snapshot(state)
-
-    task =
-      Task.Supervisor.async_nolink(Loomkin.Teams.TaskSupervisor, fn ->
-        run_loop_with_escalation(messages, loop_opts, snapshot)
-      end)
-
-    Logger.debug("[Kin:loop] spawned agent=#{state.name} ref=#{inspect(task.ref)}")
-
-    {:noreply, %{state | loop_task: {task, from}}}
+    {:noreply, start_loop(state, messages, from, trigger)}
   end
 
   # Inject broadcast into paused agent's message history without starting a loop
@@ -1120,7 +1119,13 @@ defmodule Loomkin.Teams.Agent do
   def handle_cast({:peer_message, from, content}, state) do
     peer_msg = %{role: :user, content: "[Peer #{from}]: #{content}"}
     state = %{state | messages: state.messages ++ [peer_msg]}
-    {:noreply, maybe_wake_idle(state)}
+    {:noreply, maybe_wake_idle(state, :peer_message, %{from: from, preview: content})}
+  end
+
+  @impl true
+  def handle_cast({:add_briefing, content}, state) do
+    briefing = %{role: :system, content: content}
+    {:noreply, %{state | messages: state.messages ++ [briefing]}}
   end
 
   @impl true
@@ -1213,6 +1218,7 @@ defmodule Loomkin.Teams.Agent do
 
     state = %{state | messages: msgs, failure_count: 0, loop_task: nil, task: nil}
     state = track_usage(state, meta)
+    state = clear_loop_context(state)
 
     state = set_status_and_broadcast(state, :idle)
 
@@ -1248,6 +1254,7 @@ defmodule Loomkin.Teams.Agent do
       %{state | messages: msgs, failure_count: 0, model: new_model, loop_task: nil, task: nil}
 
     state = track_usage(state, meta)
+    state = clear_loop_context(state)
 
     state = set_status_and_broadcast(state, :idle)
 
@@ -1348,11 +1355,7 @@ defmodule Loomkin.Teams.Agent do
     {%Task{}, from} = state.loop_task
     task_id = state.task && state.task[:id]
 
-    require Logger
-
-    Logger.error(
-      "[Kin:agent] loop error name=#{state.name} team=#{state.team_id} reason=#{inspect(reason)}"
-    )
+    log_loop_error(state, reason)
 
     if task_id do
       Context.cache_task(state.team_id, task_id, %{
@@ -1363,6 +1366,7 @@ defmodule Loomkin.Teams.Agent do
     end
 
     state = %{state | messages: msgs, loop_task: nil, pending_permission: nil}
+    state = clear_loop_context(state)
     state = set_status_and_broadcast(state, :idle)
 
     if from do
@@ -1433,11 +1437,7 @@ defmodule Loomkin.Teams.Agent do
       {%Task{ref: ^ref}, from} ->
         task_id = state.task && state.task[:id]
 
-        require Logger
-
-        Logger.error(
-          "[Kin:agent] loop crashed name=#{state.name} team=#{state.team_id} reason=#{inspect(reason)}"
-        )
+        log_loop_crash(state, reason)
 
         if task_id do
           Context.cache_task(state.team_id, task_id, %{
@@ -1448,6 +1448,7 @@ defmodule Loomkin.Teams.Agent do
         end
 
         state = %{state | loop_task: nil, pending_permission: nil}
+        state = clear_loop_context(state)
 
         status =
           if reason in [:normal, :shutdown] do
@@ -1818,7 +1819,7 @@ defmodule Loomkin.Teams.Agent do
   def handle_info({:peer_message, from, content}, state) do
     peer_msg = %{role: :user, content: "[Peer #{from}]: #{content}"}
     state = %{state | messages: state.messages ++ [peer_msg]}
-    {:noreply, maybe_wake_idle(state)}
+    {:noreply, maybe_wake_idle(state, :peer_message, %{from: from, preview: content})}
   end
 
   @impl true
@@ -1876,17 +1877,11 @@ defmodule Loomkin.Teams.Agent do
 
       user_message = %{role: :user, content: description}
       messages = state.messages ++ [user_message]
-      loop_opts = build_loop_opts(state)
-      snapshot = build_snapshot(state)
 
-      async_task =
-        Task.Supervisor.async_nolink(Loomkin.Teams.TaskSupervisor, fn ->
-          run_loop_with_escalation(messages, loop_opts, snapshot)
-        end)
+      trigger =
+        build_trigger_context(:task_assignment, %{task_id: task_id, preview: description}, state)
 
-      Logger.debug("[Kin:loop] spawned agent=#{state.name} ref=#{inspect(async_task.ref)}")
-
-      {:noreply, %{state | loop_task: {async_task, nil}}}
+      {:noreply, start_loop(state, messages, nil, trigger)}
     end
   end
 
@@ -1894,7 +1889,8 @@ defmodule Loomkin.Teams.Agent do
   # task notifications), this starts a new loop so the agent processes them.
   @impl true
   def handle_info(:wake_up, state) do
-    state = %{state | wake_ref: nil}
+    trigger = state.wake_context || build_trigger_context(:wake_up, %{}, state)
+    state = %{state | wake_ref: nil, wake_context: nil}
 
     if state.status != :idle || state.loop_task != nil do
       {:noreply, state}
@@ -1921,17 +1917,8 @@ defmodule Loomkin.Teams.Agent do
         state = set_status_and_broadcast(state, :working)
 
         messages = state.messages
-        loop_opts = build_loop_opts(state)
-        snapshot = build_snapshot(state)
 
-        async_task =
-          Task.Supervisor.async_nolink(Loomkin.Teams.TaskSupervisor, fn ->
-            run_loop_with_escalation(messages, loop_opts, snapshot)
-          end)
-
-        Logger.debug("[Kin:loop] wake spawned agent=#{state.name} ref=#{inspect(async_task.ref)}")
-
-        {:noreply, %{state | loop_task: {async_task, nil}}}
+        {:noreply, start_loop(state, messages, nil, trigger)}
       end
     end
   end
@@ -1976,7 +1963,7 @@ defmodule Loomkin.Teams.Agent do
       }
 
       state = %{state | messages: state.messages ++ [query_msg]}
-      {:noreply, maybe_wake_idle(state)}
+      {:noreply, maybe_wake_idle(state, :query, %{from: from, preview: question})}
     end
   end
 
@@ -1997,7 +1984,7 @@ defmodule Loomkin.Teams.Agent do
     }
 
     state = %{state | messages: state.messages ++ [answer_msg]}
-    {:noreply, maybe_wake_idle(state)}
+    {:noreply, maybe_wake_idle(state, :query_answer, %{from: from, preview: answer})}
   end
 
   @impl true
@@ -2026,7 +2013,12 @@ defmodule Loomkin.Teams.Agent do
       content: "[System] Sub-team #{sub_team_id} completed and dissolved.#{summary}"
     }
 
-    {:noreply, maybe_wake_idle(%{state | messages: state.messages ++ [msg]})}
+    {:noreply,
+     maybe_wake_idle(
+       %{state | messages: state.messages ++ [msg]},
+       :sub_team_completed,
+       %{preview: "sub-team #{sub_team_id} completed"}
+     )}
   end
 
   @impl true
@@ -2195,6 +2187,7 @@ defmodule Loomkin.Teams.Agent do
     }
 
     state = track_usage(state, metadata)
+    state = clear_loop_context(state)
     state = set_status_and_broadcast(state, :idle)
 
     # If there's an active task, complete it with the response
@@ -2207,7 +2200,10 @@ defmodule Loomkin.Teams.Agent do
 
   @impl true
   def handle_info({:loop_resumed, {:error, _reason, messages}}, state) do
-    state = %{state | messages: messages, loop_task: nil, task: nil, pending_permission: nil}
+    state =
+      %{state | messages: messages, loop_task: nil, task: nil, pending_permission: nil}
+      |> clear_loop_context()
+
     state = set_status_and_broadcast(state, :idle)
     {:noreply, drain_queues(state)}
   end
@@ -2416,7 +2412,7 @@ defmodule Loomkin.Teams.Agent do
   def handle_info({:inject_system_message, content}, state) do
     msg = %{role: :system, content: content}
     state = %{state | messages: state.messages ++ [msg]}
-    {:noreply, maybe_wake_idle(state)}
+    {:noreply, maybe_wake_idle(state, :inject_system_message, %{preview: content})}
   end
 
   def handle_info({:child_team_spawned, child_team_id}, state) do
@@ -2739,10 +2735,29 @@ defmodule Loomkin.Teams.Agent do
 
   # Schedule a wake-up for an idle agent after a short debounce.
   # This coalesces rapid-fire messages so we don't start multiple loops.
-  defp maybe_wake_idle(state) do
-    if state.status == :idle and state.loop_task == nil and state.wake_ref == nil do
-      ref = Process.send_after(self(), :wake_up, 500)
-      %{state | wake_ref: ref}
+  defp maybe_wake_idle(state), do: maybe_wake_idle(state, :unspecified, %{})
+
+  defp maybe_wake_idle(state, source, meta) do
+    if state.status == :idle and state.loop_task == nil do
+      context = build_trigger_context(source, meta, state)
+
+      if state.wake_ref == nil do
+        ref = Process.send_after(self(), :wake_up, 500)
+
+        Logger.debug(
+          "[Kin:wake] scheduled agent=#{state.name} team=#{state.team_id} trigger=#{context.source} from=#{context.from || "-"} fingerprint=#{context.fingerprint}"
+        )
+
+        %{state | wake_ref: ref, wake_context: context}
+      else
+        updated = coalesce_wake_context(state.wake_context, context)
+
+        Logger.debug(
+          "[Kin:wake] coalesced agent=#{state.name} team=#{state.team_id} trigger=#{context.source} coalesced=#{updated.coalesced_count} fingerprint=#{updated.fingerprint}"
+        )
+
+        %{state | wake_context: updated}
+      end
     else
       state
     end
@@ -2759,19 +2774,125 @@ defmodule Loomkin.Teams.Agent do
   defp maybe_rerun_after_healing(state) do
     if state.task do
       # Agent had an active task before suspension — re-run the loop to continue
-      loop_opts = build_loop_opts(state)
-      snapshot = build_snapshot(state)
-
-      task =
-        Task.Supervisor.async_nolink(Loomkin.Teams.TaskSupervisor, fn ->
-          run_loop_with_escalation(state.messages, loop_opts, snapshot)
-        end)
-
       state = set_status_and_broadcast(state, :working)
-      %{state | loop_task: {task, nil}}
+
+      trigger =
+        build_trigger_context(
+          :healing_resume,
+          %{
+            reason: state.loop_context && state.loop_context[:source],
+            preview: "[healing resume]"
+          },
+          state
+        )
+
+      start_loop(state, state.messages, nil, trigger)
     else
       state
     end
+  end
+
+  defp start_loop(state, messages, from, trigger) do
+    loop_opts = build_loop_opts(state)
+    snapshot = build_snapshot(state)
+    duplicate_prev = state.last_loop_fingerprint == trigger.fingerprint
+
+    log_loop_start(state, trigger, messages, duplicate_prev)
+
+    task =
+      Task.Supervisor.async_nolink(Loomkin.Teams.TaskSupervisor, fn ->
+        run_loop_with_escalation(messages, loop_opts, snapshot)
+      end)
+
+    Logger.debug("[Kin:loop] spawned agent=#{state.name} ref=#{inspect(task.ref)}")
+
+    %{
+      state
+      | loop_task: {task, from},
+        loop_context: trigger,
+        last_loop_fingerprint: trigger.fingerprint
+    }
+  end
+
+  defp build_trigger_context(source, meta, state) do
+    preview = meta |> Map.get(:preview) |> preview_text()
+    from = meta[:from] && to_string(meta[:from])
+    reason = meta[:reason] && to_string(meta[:reason])
+    task_id = meta[:task_id] || (state.task && state.task[:id])
+
+    base = %{
+      source: source,
+      from: from,
+      reason: reason,
+      task_id: task_id,
+      preview: preview,
+      coalesced_count: 1,
+      queue_depth: length(state.priority_queue) + length(state.pending_updates)
+    }
+
+    Map.put(base, :fingerprint, request_fingerprint(base))
+  end
+
+  defp coalesce_wake_context(nil, context), do: context
+
+  defp coalesce_wake_context(existing, incoming) do
+    recent_sources =
+      [incoming.source | List.wrap(existing[:recent_sources])]
+      |> Enum.take(5)
+
+    existing
+    |> Map.put(:coalesced_count, (existing[:coalesced_count] || 1) + 1)
+    |> Map.put(:recent_sources, recent_sources)
+    |> Map.put(:from, incoming.from || existing[:from])
+    |> Map.put(:reason, incoming.reason || existing[:reason])
+    |> Map.put(:preview, incoming.preview || existing[:preview])
+    |> Map.put(:queue_depth, max(existing[:queue_depth] || 0, incoming[:queue_depth] || 0))
+  end
+
+  defp request_fingerprint(context) do
+    :erlang.phash2({
+      context[:source],
+      context[:from],
+      context[:reason],
+      context[:task_id],
+      context[:preview]
+    })
+  end
+
+  defp preview_text(nil), do: nil
+
+  defp preview_text(text) when is_binary(text) do
+    text
+    |> String.replace(~r/\s+/, " ")
+    |> String.slice(0, 120)
+  end
+
+  defp preview_text(other), do: other |> inspect(limit: 40) |> String.slice(0, 120)
+
+  defp log_loop_start(state, trigger, messages, duplicate_prev) do
+    Logger.info(
+      "[Kin:loop] start agent=#{state.name} team=#{state.team_id} trigger=#{trigger.source} from=#{trigger.from || "-"} reason=#{trigger.reason || "-"} coalesced=#{trigger.coalesced_count || 1} duplicate_prev=#{duplicate_prev} fingerprint=#{trigger.fingerprint} messages=#{length(messages)} priority_queue=#{length(state.priority_queue)} normal_queue=#{length(state.pending_updates)} task=#{trigger.task_id || "-"} preview=#{inspect(trigger.preview || "-", limit: 40)}"
+    )
+  end
+
+  defp log_loop_error(state, reason) do
+    trigger = state.loop_context || %{}
+
+    Logger.error(
+      "[Kin:agent] loop error name=#{state.name} team=#{state.team_id} trigger=#{trigger[:source] || "-"} fingerprint=#{trigger[:fingerprint] || "-"} reason=#{inspect(reason)}"
+    )
+  end
+
+  defp log_loop_crash(state, reason) do
+    trigger = state.loop_context || %{}
+
+    Logger.error(
+      "[Kin:agent] loop crashed name=#{state.name} team=#{state.team_id} trigger=#{trigger[:source] || "-"} fingerprint=#{trigger[:fingerprint] || "-"} reason=#{inspect(reason)}"
+    )
+  end
+
+  defp clear_loop_context(state) do
+    %{state | loop_context: nil}
   end
 
   defp list_full_queue(state) do
@@ -3846,6 +3967,7 @@ defmodule Loomkin.Teams.Agent do
   defp track_usage(state, %{usage: usage}) do
     total_tokens = (usage[:input_tokens] || 0) + (usage[:output_tokens] || 0)
     raw_cost = usage[:total_cost] || 0
+    trigger = state.loop_context || %{}
 
     cost =
       if raw_cost > 0 do
@@ -3881,8 +4003,19 @@ defmodule Loomkin.Teams.Agent do
       input_tokens: usage[:input_tokens] || 0,
       output_tokens: usage[:output_tokens] || 0,
       cost: cost,
-      task_id: state.task && state.task[:id]
+      task_id: state.task && state.task[:id],
+      trigger_source: trigger[:source],
+      trigger_from: trigger[:from],
+      trigger_reason: trigger[:reason],
+      trigger_preview: trigger[:preview],
+      trigger_fingerprint: trigger[:fingerprint],
+      trigger_coalesced_count: trigger[:coalesced_count],
+      trigger_queue_depth: trigger[:queue_depth]
     })
+
+    Logger.info(
+      "[Kin:usage] agent=#{state.name} team=#{state.team_id} model=#{state.model} trigger=#{trigger[:source] || "-"} from=#{trigger[:from] || "-"} coalesced=#{trigger[:coalesced_count] || 1} fingerprint=#{trigger[:fingerprint] || "-"} input_tokens=#{usage[:input_tokens] || 0} output_tokens=#{usage[:output_tokens] || 0} total_tokens=#{total_tokens} cost=#{:erlang.float_to_binary(cost * 1.0, decimals: 6)} task=#{(state.task && state.task[:id]) || "-"}"
+    )
 
     # Emit telemetry for PubSub broadcast only — handlers must NOT
     # write back to CostTracker (already recorded above).

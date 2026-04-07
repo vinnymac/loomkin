@@ -2,6 +2,8 @@ defmodule Loomkin.AgentLoopTest do
   use ExUnit.Case, async: true
 
   alias Loomkin.AgentLoop
+  alias ReqLLM.Message
+  alias ReqLLM.Response
 
   describe "format_tool_result/1" do
     test "extracts text from {:ok, %{result: text}}" do
@@ -28,6 +30,47 @@ defmodule Loomkin.AgentLoopTest do
     test "inspects other errors" do
       result = AgentLoop.format_tool_result({:error, :timeout})
       assert result == "Error: :timeout"
+    end
+  end
+
+  describe "assistant_message_from_response/2" do
+    test "preserves response metadata for tool-call turns" do
+      classified = %{
+        type: :tool_calls,
+        text: "",
+        tool_calls: [%{id: "call_123", name: "echo", arguments: %{"text" => "hi"}}]
+      }
+
+      response = %Response{
+        id: "resp_123",
+        model: "openai:gpt-5.4",
+        context: ReqLLM.Context.new([]),
+        message: %Message{
+          role: :assistant,
+          content: [],
+          metadata: %{response_id: "resp_123"}
+        }
+      }
+
+      assistant_msg = AgentLoop.assistant_message_from_response(classified, response)
+
+      assert assistant_msg.metadata[:response_id] == "resp_123"
+      assert [%{id: "call_123"}] = assistant_msg.tool_calls
+    end
+  end
+
+  describe "to_req_message/1" do
+    test "preserves assistant metadata and tool call ids" do
+      req_message =
+        AgentLoop.to_req_message(%{
+          role: :assistant,
+          content: "",
+          tool_calls: [%{id: "call_123", name: "echo", arguments: %{"text" => "hi"}}],
+          metadata: %{response_id: "resp_123"}
+        })
+
+      assert req_message.metadata[:response_id] == "resp_123"
+      assert [%ReqLLM.ToolCall{id: "call_123"}] = req_message.tool_calls
     end
   end
 

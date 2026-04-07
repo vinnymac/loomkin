@@ -194,11 +194,30 @@ defmodule Loomkin.Teams.RoleTest do
       assert prompt =~ "team_dissolve"
     end
 
+    test "lead prompt emphasizes convergence over repeated coordination scans" do
+      {:ok, %Role{system_prompt: prompt}} = Role.get(:lead)
+      assert prompt =~ "## Convergence Discipline"
+      assert prompt =~ "Do one quick coordination pass, then delegate or answer."
+
+      assert prompt =~
+               "Do NOT keep alternating between decision_query, query_backlog, search_keepers, or decision_log"
+    end
+
     test "researcher role system_prompt contains structured findings format" do
       {:ok, %Role{system_prompt: prompt}} = Role.get(:researcher)
       assert prompt =~ "## Research Findings"
       assert prompt =~ "## Recommendation"
       assert prompt =~ "peer_message"
+    end
+
+    test "concierge prompt emphasizes convergence over coordination loops" do
+      {:ok, %Role{system_prompt: prompt}} = Role.get(:concierge)
+      assert prompt =~ "## Convergence Discipline"
+
+      assert prompt =~
+               "Do NOT keep cycling through decision_query, query_backlog, search_keepers, and decision_log"
+
+      assert prompt =~ "spawn a specialist instead of doing more coordination scans yourself"
     end
   end
 

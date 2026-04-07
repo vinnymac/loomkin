@@ -19,6 +19,24 @@ defmodule Loomkin.AgentLoop do
 
   @default_max_rate_limit_retries 3
   @default_max_iterations 30
+  @orientation_tools MapSet.new([
+                       "decision_query",
+                       "query_backlog",
+                       "search_keepers",
+                       "decision_log",
+                       "team_progress",
+                       "context_retrieve"
+                     ])
+  @coordination_warning_threshold 2
+  @coordination_warning """
+  You have spent multiple consecutive iterations on coordination/context tools.
+  Stop planning and move the task forward. Either:
+  - delegate to a specialist,
+  - ask the human one focused question, or
+  - provide your best current answer.
+
+  Do NOT call more coordination tools until new external input arrives.
+  """
 
   @type on_event :: (atom(), map() -> :ok)
 
@@ -60,6 +78,8 @@ defmodule Loomkin.AgentLoop do
     Process.put(:loomkin_read_files, MapSet.new())
     # Initialize cycle detection tracker (previous tool-call signature)
     Process.put(:loomkin_prev_tool_signature, nil)
+    # Track repeated coordination-only turns so we can steer agents out of planning loops.
+    Process.put(:loomkin_coordination_streak, 0)
 
     # Bootstrap failure memory: inject lessons from past errors
     messages = bootstrap_failure_memory(messages, config)
@@ -283,7 +303,12 @@ defmodule Loomkin.AgentLoop do
         case execute_tool_calls(classified.tool_calls, messages, config, iteration) do
           {:ok, messages} ->
             emit_usage(config, response)
-            messages = maybe_inject_cycle_warning(classified.tool_calls, messages, config)
+
+            messages =
+              messages
+              |> maybe_inject_cycle_warning(classified.tool_calls, config)
+              |> maybe_inject_coordination_warning(classified.tool_calls, config)
+
             do_loop(messages, config, iteration + 1)
 
           {:paused, reason, messages} ->
@@ -839,6 +864,47 @@ defmodule Loomkin.AgentLoop do
     end
   end
 
+  @doc false
+  def maybe_inject_coordination_warning(messages, tool_calls, config) do
+    if coordination_only_tool_calls?(tool_calls) do
+      prev_streak = Process.get(:loomkin_coordination_streak, 0)
+      streak = prev_streak + 1
+      Process.put(:loomkin_coordination_streak, streak)
+
+      if prev_streak < @coordination_warning_threshold and
+           streak >= @coordination_warning_threshold do
+        tools = tool_calls |> Enum.map(&tool_name/1) |> Enum.uniq()
+
+        Logger.warning(
+          "[Kin:loop] coordination_streak agent=#{config.agent_name || "-"} team=#{config.team_id || "-"} streak=#{streak} tools=#{Enum.join(tools, ",")}"
+        )
+
+        warning_msg = %{
+          role: :user,
+          content: @coordination_warning
+        }
+
+        emit(config, :coordination_loop_detected, %{streak: streak, tools: tools})
+        emit(config, :new_message, warning_msg)
+        messages ++ [warning_msg]
+      else
+        messages
+      end
+    else
+      Process.put(:loomkin_coordination_streak, 0)
+      messages
+    end
+  end
+
+  @doc false
+  def coordination_only_tool_calls?(tool_calls) when is_list(tool_calls) and tool_calls != [] do
+    Enum.all?(tool_calls, fn tool_call ->
+      MapSet.member?(@orientation_tools, tool_name(tool_call))
+    end)
+  end
+
+  def coordination_only_tool_calls?(_tool_calls), do: false
+
   defp tool_call_signature(tool_calls) when is_list(tool_calls) do
     tool_calls
     |> Enum.map(fn tc ->
@@ -848,6 +914,10 @@ defmodule Loomkin.AgentLoop do
     end)
     |> Enum.sort()
     |> Enum.join("|")
+  end
+
+  defp tool_name(tool_call) do
+    tool_call[:name] || tool_call["name"] || "unknown"
   end
 
   # -- Helpers -----------------------------------------------------------------

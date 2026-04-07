@@ -363,6 +363,65 @@ defmodule Loomkin.AgentLoopTest do
     end
   end
 
+  describe "coordination loop detection" do
+    test "coordination-only tool sets are detected" do
+      assert AgentLoop.coordination_only_tool_calls?([
+               %{name: "decision_query", arguments: %{"query_type" => "pulse"}},
+               %{name: "query_backlog", arguments: %{"query_type" => "summary"}}
+             ])
+
+      refute AgentLoop.coordination_only_tool_calls?([
+               %{name: "decision_query", arguments: %{"query_type" => "pulse"}},
+               %{name: "team_spawn", arguments: %{"roles" => []}}
+             ])
+    end
+
+    test "injects a warning after consecutive coordination-only iterations" do
+      Process.put(:loomkin_coordination_streak, 0)
+      test_pid = self()
+
+      config = %{
+        agent_name: "concierge",
+        team_id: "team-123",
+        on_event: fn event_name, payload ->
+          send(test_pid, {:event, event_name, payload})
+          :ok
+        end
+      }
+
+      tools = [%{name: "decision_query", arguments: %{"query_type" => "pulse"}}]
+
+      assert [] == AgentLoop.maybe_inject_coordination_warning([], tools, config)
+      refute_received {:event, :coordination_loop_detected, _}
+
+      messages = AgentLoop.maybe_inject_coordination_warning([], tools, config)
+      assert [%{role: :user, content: content}] = messages
+      assert content =~ "Stop planning and move the task forward"
+
+      assert_received {:event, :coordination_loop_detected,
+                       %{streak: 2, tools: ["decision_query"]}}
+    end
+
+    test "resets coordination streak when non-coordination work appears" do
+      Process.put(:loomkin_coordination_streak, 1)
+
+      config = %{
+        agent_name: "concierge",
+        team_id: "team-123",
+        on_event: fn _, _ -> :ok end
+      }
+
+      assert [] ==
+               AgentLoop.maybe_inject_coordination_warning(
+                 [],
+                 [%{name: "team_spawn", arguments: %{"roles" => []}}],
+                 config
+               )
+
+      assert Process.get(:loomkin_coordination_streak) == 0
+    end
+  end
+
   describe "max_iterations" do
     test "config includes max_iterations with default of 25" do
       # Build config through run — verify it wires up correctly

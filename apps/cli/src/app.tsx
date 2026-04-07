@@ -298,6 +298,7 @@ export function App() {
             key={pendingApprovals[0].gate_id}
             type="approval"
             gate={pendingApprovals[0]}
+            queueCount={pendingApprovals.length}
             onRespond={respondApproval}
           />
         )}
@@ -309,6 +310,7 @@ export function App() {
             key={pendingSpawnGates[0].gate_id}
             type="spawn_gate"
             gate={pendingSpawnGates[0]}
+            queueCount={pendingSpawnGates.length}
             onRespond={respondSpawnGate}
           />
         )}

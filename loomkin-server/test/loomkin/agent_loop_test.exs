@@ -72,6 +72,12 @@ defmodule Loomkin.AgentLoopTest do
       assert req_message.metadata[:response_id] == "resp_123"
       assert [%ReqLLM.ToolCall{id: "call_123"}] = req_message.tool_calls
     end
+
+    test "returns nil for malformed messages instead of crashing" do
+      assert AgentLoop.to_req_message(nil) == nil
+      assert AgentLoop.to_req_message(%{content: "missing role"}) == nil
+      assert AgentLoop.to_req_message("not a map") == nil
+    end
   end
 
   describe "run/2 option validation" do
@@ -440,7 +446,7 @@ defmodule Loomkin.AgentLoopTest do
     end
 
     test "stops the loop after too many consecutive coordination-only iterations" do
-      Process.put(:loomkin_coordination_streak, 4)
+      Process.put(:loomkin_coordination_streak, 6)
       test_pid = self()
 
       config = %{
@@ -466,11 +472,11 @@ defmodule Loomkin.AgentLoopTest do
       assert [%{role: :assistant, content: ^message}] = messages
       assert usage.input_tokens == 10
 
-      assert_received {:event, :coordination_loop_stopped, %{streak: 4}}
+      assert_received {:event, :coordination_loop_stopped, %{streak: 6}}
     end
 
     test "concierge stops earlier than other roles" do
-      Process.put(:loomkin_coordination_streak, 3)
+      Process.put(:loomkin_coordination_streak, 5)
 
       config = %{
         role: :concierge,

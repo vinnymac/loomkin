@@ -28,9 +28,9 @@ defmodule Loomkin.AgentLoop do
                        "context_retrieve"
                      ])
   @coordination_warning_threshold 2
-  @coordination_abort_threshold 4
+  @coordination_abort_threshold 6
   @concierge_coordination_warning_threshold 1
-  @concierge_coordination_abort_threshold 3
+  @concierge_coordination_abort_threshold 5
   @coordination_warning """
   You have spent multiple consecutive iterations on coordination/context tools.
   Stop planning and move the task forward. Either:
@@ -1077,7 +1077,14 @@ defmodule Loomkin.AgentLoop do
   end
 
   defp build_req_messages(windowed_messages) do
-    Enum.map(windowed_messages, &to_req_message/1)
+    windowed_messages
+    |> Enum.reduce([], fn msg, acc ->
+      case to_req_message(msg) do
+        nil -> acc
+        req_msg -> [req_msg | acc]
+      end
+    end)
+    |> Enum.reverse()
   end
 
   @doc false
@@ -1105,21 +1112,26 @@ defmodule Loomkin.AgentLoop do
     end
   end
 
+  def to_req_message(nil) do
+    Logger.warning("[Kin:data] dropping nil message from llm context window")
+    nil
+  end
+
   @doc false
-  def to_req_message(msg) do
+  def to_req_message(msg) when is_map(msg) do
     role = msg[:role] || msg["role"]
     content = msg[:content] || msg["content"] || ""
     metadata = msg[:metadata] || msg["metadata"] || %{}
     tool_calls = msg[:tool_calls] || msg["tool_calls"]
 
     case role do
-      :system ->
+      role when role in [:system, "system"] ->
         ReqLLM.Context.system(content)
 
-      :user ->
+      role when role in [:user, "user"] ->
         ReqLLM.Context.user(content)
 
-      :assistant ->
+      role when role in [:assistant, "assistant"] ->
         if is_list(tool_calls) and tool_calls != [] do
           tool_calls =
             Enum.map(tool_calls, fn tc ->
@@ -1132,12 +1144,27 @@ defmodule Loomkin.AgentLoop do
           ReqLLM.Context.assistant(content, metadata: metadata)
         end
 
-      :tool ->
+      role when role in [:tool, "tool"] ->
         ReqLLM.Context.tool_result(
           msg[:tool_call_id] || msg["tool_call_id"] || "",
           content
         )
+
+      other ->
+        Logger.warning(
+          "[Kin:data] dropping malformed message from llm context window role=#{inspect(other)} payload=#{inspect(msg, limit: 120)}"
+        )
+
+        nil
     end
+  end
+
+  def to_req_message(msg) do
+    Logger.warning(
+      "[Kin:data] dropping non-map message from llm context window payload=#{inspect(msg, limit: 120)}"
+    )
+
+    nil
   end
 
   defp emit(config, event_name, payload) do

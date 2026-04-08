@@ -61,6 +61,10 @@ defmodule Loomkin.AgentLoop do
   - ask the human one focused question, or
   - give the user your best current synthesis.
 
+  If the latest user message already gave you a concrete task, do NOT ask what they want next
+  and do NOT ask them to restate the task. Route it now.
+  If clarification is truly required, ask only for the one missing detail.
+
   Do NOT run more coordination/context tools right now.
   Do NOT become the deepest worker in the loop.
   """

@@ -424,6 +424,8 @@ defmodule Loomkin.AgentLoopTest do
       assert [%{role: :user, content: content}] = messages
       assert content =~ "Stay available for the human"
       assert content =~ "spawn a specialist or team"
+      assert content =~ "do NOT ask what they want next"
+      assert content =~ "do NOT ask them to restate the task"
     end
 
     test "resets coordination streak when non-coordination work appears" do

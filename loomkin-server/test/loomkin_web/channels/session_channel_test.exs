@@ -20,6 +20,27 @@ defmodule LoomkinWeb.SessionChannelTest do
     {:ok, user: user, scope: scope}
   end
 
+  defp runtime_team_id(session_id, fallback_team_id, attempts \\ 20)
+
+  defp runtime_team_id(_session_id, fallback_team_id, 0), do: fallback_team_id
+
+  defp runtime_team_id(session_id, fallback_team_id, attempts) do
+    team_id =
+      session_id
+      |> Persistence.get_session()
+      |> case do
+        %{team_id: team_id} when is_binary(team_id) and team_id != "" -> team_id
+        _ -> fallback_team_id
+      end
+
+    if team_id != fallback_team_id do
+      team_id
+    else
+      Process.sleep(10)
+      runtime_team_id(session_id, fallback_team_id, attempts - 1)
+    end
+  end
+
   test "forwards peer_message content from signal data message field", %{user: user, scope: scope} do
     {:ok, session} =
       Persistence.create_session(%{
@@ -66,11 +87,13 @@ defmodule LoomkinWeb.SessionChannelTest do
   end
 
   test "formats max-iteration agent errors for cli consumers", %{user: user, scope: scope} do
+    initial_team_id = "team-123"
+
     {:ok, session} =
       Persistence.create_session(%{
         model: "anthropic:claude-sonnet-4-5",
         project_path: "/tmp",
-        team_id: "team-123",
+        team_id: initial_team_id,
         user_id: user.id
       })
 
@@ -85,10 +108,12 @@ defmodule LoomkinWeb.SessionChannelTest do
       0 -> :ok
     end
 
+    team_id = runtime_team_id(session.id, initial_team_id)
+
     signal =
       Loomkin.Signals.Agent.Error.new!(%{
         agent_name: "concierge",
-        team_id: "team-123"
+        team_id: team_id
       })
 
     signal = %{
@@ -99,23 +124,29 @@ defmodule LoomkinWeb.SessionChannelTest do
           })
     }
 
-    send(socket.channel_pid, signal)
+    send(socket.channel_pid, {:signal, signal})
 
-    assert_push "agent_error", %{
-      agent_name: "concierge",
-      error: "Exceeded max iterations (30)"
-    }
+    assert_push(
+      "agent_error",
+      %{
+        agent_name: "concierge",
+        error: "Exceeded max iterations (30)"
+      },
+      500
+    )
   end
 
   test "forwards findings publication events for cli agent indicators", %{
     user: user,
     scope: scope
   } do
+    initial_team_id = "team-123"
+
     {:ok, session} =
       Persistence.create_session(%{
         model: "anthropic:claude-sonnet-4-5",
         project_path: "/tmp",
-        team_id: "team-123",
+        team_id: initial_team_id,
         user_id: user.id
       })
 
@@ -130,10 +161,12 @@ defmodule LoomkinWeb.SessionChannelTest do
       0 -> :ok
     end
 
+    team_id = runtime_team_id(session.id, initial_team_id)
+
     signal =
       Loomkin.Signals.Context.Offloaded.new!(%{
         agent_name: "researcher-1",
-        team_id: "team-123"
+        team_id: team_id
       })
 
     signal = %{
@@ -148,14 +181,18 @@ defmodule LoomkinWeb.SessionChannelTest do
           })
     }
 
-    send(socket.channel_pid, signal)
+    send(socket.channel_pid, {:signal, signal})
 
-    assert_push "agent_findings_published", %{
-      agent_name: "researcher-1",
-      team_id: "team-123",
-      topic: "research: cli layout audit",
-      source: "peer_complete_task",
-      task_id: "task-123"
-    }
+    assert_push(
+      "agent_findings_published",
+      %{
+        agent_name: "researcher-1",
+        team_id: ^team_id,
+        topic: "research: cli layout audit",
+        source: "peer_complete_task",
+        task_id: "task-123"
+      },
+      500
+    )
   end
 end

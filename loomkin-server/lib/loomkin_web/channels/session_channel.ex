@@ -32,6 +32,7 @@ defmodule LoomkinWeb.SessionChannel do
         Session.subscribe(session_id)
         Loomkin.Signals.subscribe("team.**")
         Loomkin.Signals.subscribe("agent.**")
+        Loomkin.Signals.subscribe("context.**")
         Loomkin.Signals.subscribe("collaboration.**")
 
         {:ok, %{model: session.model},

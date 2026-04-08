@@ -253,6 +253,8 @@ defmodule Loomkin.AgentLoop do
   end
 
   defp do_loop(messages, config, iteration) do
+    messages = normalize_history_messages(messages)
+
     # Auto-offload context if agent is above threshold
     messages = maybe_auto_offload(messages, config)
 
@@ -1190,6 +1192,7 @@ defmodule Loomkin.AgentLoop do
 
   defp build_req_messages(windowed_messages) do
     windowed_messages
+    |> normalize_history_messages()
     |> Enum.reduce([], fn msg, acc ->
       case to_req_message(msg) do
         nil -> acc
@@ -1198,6 +1201,17 @@ defmodule Loomkin.AgentLoop do
     end)
     |> Enum.reverse()
   end
+
+  @doc false
+  def normalize_history_messages(messages) when is_list(messages) do
+    messages
+    |> Enum.reduce([], fn msg, acc ->
+      normalize_history_message(msg, acc)
+    end)
+    |> Enum.reverse()
+  end
+
+  def normalize_history_messages(messages), do: messages
 
   @doc false
   def assistant_message_from_response(classified, response) when is_map(classified) do
@@ -1278,6 +1292,111 @@ defmodule Loomkin.AgentLoop do
 
     nil
   end
+
+  defp normalize_history_message(nil, acc) do
+    Logger.warning("[Kin:data] dropping nil message from agent history")
+    acc
+  end
+
+  defp normalize_history_message(%{} = msg, acc) do
+    cond do
+      valid_history_role?(msg[:role] || msg["role"]) ->
+        [normalize_regular_history_message(msg) | acc]
+
+      raw_tool_call_message?(msg) ->
+        attach_or_drop_orphan_tool_call(msg, acc)
+
+      true ->
+        Logger.warning(
+          "[Kin:data] dropping malformed message from agent history role=#{inspect(msg[:role] || msg["role"])} payload=#{inspect(msg, limit: 120)}"
+        )
+
+        acc
+    end
+  end
+
+  defp normalize_history_message(msg, acc) do
+    Logger.warning(
+      "[Kin:data] dropping non-map message from agent history payload=#{inspect(msg, limit: 120)}"
+    )
+
+    acc
+  end
+
+  defp normalize_regular_history_message(msg) do
+    role = msg[:role] || msg["role"]
+    content = msg[:content] || msg["content"] || ""
+    metadata = msg[:metadata] || msg["metadata"]
+    tool_call_id = msg[:tool_call_id] || msg["tool_call_id"]
+    tool_calls = normalize_tool_calls(msg[:tool_calls] || msg["tool_calls"] || [])
+
+    %{}
+    |> Map.put(:role, role)
+    |> Map.put(:content, content)
+    |> maybe_put_non_empty(:metadata, metadata)
+    |> maybe_put_non_empty(:tool_call_id, tool_call_id)
+    |> maybe_put_non_empty(:tool_calls, tool_calls)
+    |> maybe_copy_history_key(msg, :priority)
+    |> maybe_copy_history_key(msg, "priority")
+  end
+
+  defp maybe_copy_history_key(map, source, key) do
+    case Map.fetch(source, key) do
+      {:ok, value} -> Map.put_new(map, :priority, value)
+      :error -> map
+    end
+  end
+
+  defp maybe_put_non_empty(map, _key, nil), do: map
+  defp maybe_put_non_empty(map, _key, []), do: map
+  defp maybe_put_non_empty(map, key, value), do: Map.put(map, key, value)
+
+  defp raw_tool_call_message?(msg) when is_map(msg) do
+    (is_binary(msg[:name] || msg["name"]) or is_atom(msg[:name])) and
+      is_map(msg[:arguments] || msg["arguments"] || %{}) and
+      not valid_history_role?(msg[:role] || msg["role"])
+  end
+
+  defp raw_tool_call_message?(_), do: false
+
+  defp attach_or_drop_orphan_tool_call(msg, [%{role: role} = assistant | rest])
+       when role in [:assistant, "assistant"] do
+    normalized_tool_call = normalize_tool_call(msg)
+    tool_calls = normalize_tool_calls(assistant[:tool_calls] || assistant["tool_calls"] || [])
+
+    Logger.warning(
+      "[Kin:data] repaired orphan tool_call in agent history id=#{inspect(normalized_tool_call[:id])} name=#{inspect(normalized_tool_call[:name])}"
+    )
+
+    [Map.put(assistant, :tool_calls, tool_calls ++ [normalized_tool_call]) | rest]
+  end
+
+  defp attach_or_drop_orphan_tool_call(msg, acc) do
+    Logger.warning(
+      "[Kin:data] dropping orphan tool_call from agent history payload=#{inspect(msg, limit: 120)}"
+    )
+
+    acc
+  end
+
+  defp normalize_tool_calls(tool_calls) when is_list(tool_calls) do
+    tool_calls
+    |> Enum.filter(&raw_tool_call_message?/1)
+    |> Enum.map(&normalize_tool_call/1)
+  end
+
+  defp normalize_tool_calls(_), do: []
+
+  defp normalize_tool_call(tool_call) do
+    %{
+      id: tool_call[:id] || tool_call["id"] || "call_#{Ecto.UUID.generate()}",
+      name: tool_call[:name] || tool_call["name"],
+      arguments: tool_call[:arguments] || tool_call["arguments"] || %{}
+    }
+  end
+
+  defp valid_history_role?(role),
+    do: role in [:system, "system", :user, "user", :assistant, "assistant", :tool, "tool"]
 
   defp emit(config, event_name, payload) do
     config.on_event.(event_name, payload)

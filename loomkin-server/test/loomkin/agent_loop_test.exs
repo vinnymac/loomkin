@@ -562,6 +562,39 @@ defmodule Loomkin.AgentLoopTest do
     end
   end
 
+  describe "history normalization" do
+    test "reattaches orphan tool-call maps to the previous assistant message" do
+      messages = [
+        %{role: :user, content: "Please assess vault ingestion"},
+        %{role: :assistant, content: ""},
+        %{
+          id: "call_123",
+          name: "team_spawn",
+          arguments: %{"team_name" => "vault-ingestion-assessment"}
+        },
+        %{role: :tool, content: "spawned", tool_call_id: "call_123"}
+      ]
+
+      assert [
+               %{role: :user},
+               %{role: :assistant, tool_calls: [tool_call]},
+               %{role: :tool, tool_call_id: "call_123"}
+             ] = AgentLoop.normalize_history_messages(messages)
+
+      assert tool_call.id == "call_123"
+      assert tool_call.name == "team_spawn"
+      assert tool_call.arguments == %{"team_name" => "vault-ingestion-assessment"}
+    end
+
+    test "drops unrepairable orphan tool-call maps" do
+      messages = [
+        %{id: "call_123", name: "team_spawn", arguments: %{"team_name" => "vault"}}
+      ]
+
+      assert [] == AgentLoop.normalize_history_messages(messages)
+    end
+  end
+
   describe "max_iterations" do
     test "config includes max_iterations with default of 25" do
       # Build config through run — verify it wires up correctly

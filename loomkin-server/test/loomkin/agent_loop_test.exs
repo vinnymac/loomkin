@@ -500,6 +500,68 @@ defmodule Loomkin.AgentLoopTest do
     end
   end
 
+  describe "research loop detection" do
+    test "research-only tool sets are detected" do
+      assert AgentLoop.research_scan_only_tool_calls?([
+               %{name: "file_search", arguments: %{"pattern" => "AgentLoop"}},
+               %{name: "file_read", arguments: %{"file_path" => "lib/foo.ex"}}
+             ])
+
+      refute AgentLoop.research_scan_only_tool_calls?([
+               %{name: "file_search", arguments: %{"pattern" => "AgentLoop"}},
+               %{name: "peer_discovery", arguments: %{"discoveries" => ["x"]}}
+             ])
+    end
+
+    test "warns researchers after repeated scan-only iterations" do
+      Process.put(:loomkin_research_scan_streak, 0)
+      test_pid = self()
+
+      config = %{
+        role: :researcher,
+        agent_name: "researcher-1",
+        team_id: "team-123",
+        on_event: fn event_name, payload ->
+          send(test_pid, {:event, event_name, payload})
+          :ok
+        end
+      }
+
+      tools = [%{name: "file_search", arguments: %{"pattern" => "AgentLoop"}}]
+
+      assert [] == AgentLoop.maybe_inject_research_warning([], tools, config)
+      assert [] == AgentLoop.maybe_inject_research_warning([], tools, config)
+
+      messages = AgentLoop.maybe_inject_research_warning([], tools, config)
+      assert [%{role: :user, content: content}] = messages
+      assert content =~ "You are a researcher"
+      assert content =~ "context_offload"
+      assert content =~ "peer_complete_task"
+
+      assert_received {:event, :research_loop_detected, %{streak: 3, tools: ["file_search"]}}
+    end
+
+    test "resets research scan streak when the researcher starts publishing" do
+      Process.put(:loomkin_research_scan_streak, 2)
+
+      config = %{
+        role: :researcher,
+        agent_name: "researcher-1",
+        team_id: "team-123",
+        on_event: fn _, _ -> :ok end
+      }
+
+      assert [] ==
+               AgentLoop.maybe_inject_research_warning(
+                 [],
+                 [%{name: "peer_discovery", arguments: %{"discoveries" => ["x"]}}],
+                 config
+               )
+
+      assert Process.get(:loomkin_research_scan_streak) == 0
+    end
+  end
+
   describe "max_iterations" do
     test "config includes max_iterations with default of 25" do
       # Build config through run — verify it wires up correctly

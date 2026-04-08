@@ -208,6 +208,8 @@ defmodule Loomkin.Teams.RoleTest do
       assert prompt =~ "## Research Findings"
       assert prompt =~ "## Recommendation"
       assert prompt =~ "peer_message"
+      assert prompt =~ "## Research Budget Discipline"
+      assert prompt =~ "Persist before you disappear"
     end
 
     test "concierge prompt emphasizes convergence over coordination loops" do

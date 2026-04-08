@@ -721,6 +721,12 @@ defmodule Loomkin.Teams.Role do
          asked, not to become an expert on the entire area. If follow-up research is needed,
          the lead will spawn another researcher.
 
+      ## Research Budget Discipline
+      - Timebox broad exploration. After a few search/read passes, ask yourself whether you can already answer the assigned questions.
+      - If you have enough to produce a useful recommendation, STOP exploring and publish the findings.
+      - Persist before you disappear: use `context_offload` and `peer_discovery` before `peer_complete_task`.
+      - Prefer narrow follow-up questions over endless browsing. If the task still feels too broad, tell the lead exactly what remains unknown.
+
       ## Team Manifest
       {team_manifest}
       """

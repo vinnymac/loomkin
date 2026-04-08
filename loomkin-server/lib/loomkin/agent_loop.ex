@@ -27,10 +27,22 @@ defmodule Loomkin.AgentLoop do
                        "team_progress",
                        "context_retrieve"
                      ])
+  @research_scan_tools MapSet.new([
+                         "file_read",
+                         "file_search",
+                         "content_search",
+                         "directory_list",
+                         "decision_query",
+                         "search_keepers",
+                         "context_retrieve",
+                         "introspect_decision_history",
+                         "introspect_failure_patterns"
+                       ])
   @coordination_warning_threshold 2
   @coordination_abort_threshold 6
   @concierge_coordination_warning_threshold 1
   @concierge_coordination_abort_threshold 5
+  @research_warning_threshold 3
   @coordination_warning """
   You have spent multiple consecutive iterations on coordination/context tools.
   Stop planning and move the task forward. Either:
@@ -61,6 +73,18 @@ defmodule Loomkin.AgentLoop do
   Concierge stopped after repeated coordination-only iterations.
   It was staying busy on planning/context work instead of delegating and staying available for the user.
   Try again with a more specific ask, approve delegation, or provide fresh input.
+  """
+  @research_warning """
+  You are a researcher. You have already spent multiple iterations scanning and reading.
+  If you can answer the assigned research questions, stop exploring and publish what you found now.
+
+  Next step:
+  - summarize the concrete findings,
+  - persist them with context_offload,
+  - broadcast the key points with peer_discovery or peer_message,
+  - then finish with peer_complete_task.
+
+  Do NOT keep researching just to be thorough if you already have enough to answer.
   """
 
   @type on_event :: (atom(), map() -> :ok)
@@ -105,6 +129,8 @@ defmodule Loomkin.AgentLoop do
     Process.put(:loomkin_prev_tool_signature, nil)
     # Track repeated coordination-only turns so we can steer agents out of planning loops.
     Process.put(:loomkin_coordination_streak, 0)
+    # Track researchers who keep scanning without publishing findings.
+    Process.put(:loomkin_research_scan_streak, 0)
 
     # Bootstrap failure memory: inject lessons from past errors
     messages = bootstrap_failure_memory(messages, config)
@@ -333,6 +359,7 @@ defmodule Loomkin.AgentLoop do
               messages
               |> maybe_inject_cycle_warning(classified.tool_calls, config)
               |> maybe_inject_coordination_warning(classified.tool_calls, config)
+              |> maybe_inject_research_warning(classified.tool_calls, config)
 
             case maybe_stop_coordination_loop(messages, config, response) do
               {:stop, response_text, messages, metadata} ->
@@ -937,6 +964,46 @@ defmodule Loomkin.AgentLoop do
   end
 
   def coordination_only_tool_calls?(_tool_calls), do: false
+
+  @doc false
+  def maybe_inject_research_warning(messages, tool_calls, config) do
+    if Map.get(config, :role) == :researcher and research_scan_only_tool_calls?(tool_calls) do
+      prev_streak = Process.get(:loomkin_research_scan_streak, 0)
+      streak = prev_streak + 1
+      Process.put(:loomkin_research_scan_streak, streak)
+
+      if prev_streak < @research_warning_threshold and streak >= @research_warning_threshold do
+        tools = tool_calls |> Enum.map(&tool_name/1) |> Enum.uniq()
+
+        Logger.warning(
+          "[Kin:loop] research_scan_streak agent=#{config.agent_name || "-"} team=#{config.team_id || "-"} streak=#{streak} tools=#{Enum.join(tools, ",")}"
+        )
+
+        warning_msg = %{
+          role: :user,
+          content: String.trim(@research_warning)
+        }
+
+        emit(config, :research_loop_detected, %{streak: streak, tools: tools})
+        emit(config, :new_message, warning_msg)
+        messages ++ [warning_msg]
+      else
+        messages
+      end
+    else
+      Process.put(:loomkin_research_scan_streak, 0)
+      messages
+    end
+  end
+
+  @doc false
+  def research_scan_only_tool_calls?(tool_calls) when is_list(tool_calls) and tool_calls != [] do
+    Enum.all?(tool_calls, fn tool_call ->
+      MapSet.member?(@research_scan_tools, tool_name(tool_call))
+    end)
+  end
+
+  def research_scan_only_tool_calls?(_tool_calls), do: false
 
   @doc false
   def maybe_stop_coordination_loop(messages, config, response) do

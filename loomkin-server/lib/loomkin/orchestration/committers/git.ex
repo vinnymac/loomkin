@@ -31,9 +31,8 @@ defmodule Loomkin.Orchestration.Committers.Git do
 
   defp do_commit(path, payload) do
     with :ok <- stage(path, payload),
-         :ok <- ensure_changes(path),
-         {:ok, sha} <- do_git_commit(path, payload) do
-      {:ok, sha}
+         :ok <- ensure_changes(path) do
+      do_git_commit(path, payload)
     end
   end
 

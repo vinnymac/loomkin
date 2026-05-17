@@ -46,9 +46,8 @@ defmodule Loomkin.Orchestration.Curator do
     llm_opts = Keyword.get(opts, :llm_opts, []) |> Keyword.put_new(:reviewer, :knowledge_curator)
 
     with {:ok, text} <- LLM.complete(messages, llm_opts),
-         {:ok, decoded} <- decode(text),
-         {:ok, persisted} <- persist(decoded, store, work_unit_summary) do
-      {:ok, persisted}
+         {:ok, decoded} <- decode(text) do
+      persist(decoded, store, work_unit_summary)
     end
   end
 

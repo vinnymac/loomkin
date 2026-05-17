@@ -41,7 +41,10 @@ function authHeaders(): Record<string, string> {
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${getApiUrl()}${path}`;
-  const res = await fetch(url, { ...init, headers: { ...authHeaders(), ...(init?.headers ?? {}) } });
+  const res = await fetch(url, {
+    ...init,
+    headers: { ...authHeaders(), ...(init?.headers ?? {}) },
+  });
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`${res.status} ${res.statusText}: ${body}`);
@@ -74,7 +77,7 @@ export async function runOrchestrationStatus(): Promise<number> {
     const { data: epics } = await api<{ data: Epic[] }>("/orchestration/epics");
 
     if (epics.length === 0) {
-      console.log(pc.dim("no orchestration epics yet — try `loomkin orchestrate \"<spec>\"`"));
+      console.log(pc.dim('no orchestration epics yet — try `loomkin orchestrate "<spec>"`'));
       return 0;
     }
 
@@ -96,7 +99,9 @@ export async function runOrchestrationStatus(): Promise<number> {
 export async function runOrchestrate(spec: string, title?: string): Promise<number> {
   if (!spec || spec.trim().length === 0) {
     console.error(
-      pc.red('orchestrate requires a non-empty spec. Usage: loomkin orchestrate "<spec>" [--title=...]'),
+      pc.red(
+        'orchestrate requires a non-empty spec. Usage: loomkin orchestrate "<spec>" [--title=...]',
+      ),
     );
     return 1;
   }
@@ -138,8 +143,7 @@ export async function runOrchestrationShow(id: string): Promise<number> {
 
     console.log(pc.bold(`gate results (${data.gate_results.length})`));
     for (const g of data.gate_results) {
-      const verdictColored =
-        g.verdict === "pass" ? pc.green(g.verdict) : pc.red(g.verdict);
+      const verdictColored = g.verdict === "pass" ? pc.green(g.verdict) : pc.red(g.verdict);
       console.log(
         `  • ${g.kind.padEnd(20)} [${verdictColored}] iter=${g.iteration} reviewers=${g.reviewer_count}`,
       );
